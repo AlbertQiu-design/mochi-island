@@ -1,0 +1,15 @@
+{
+  "dx" : 985,
+  "card_fill" : "#fffdf8",
+  "fill" : "#ffffff",
+  "text" : "#241f1c",
+  "bubble_dx" : -7,
+  "look" : "mochi",
+  "pet_scale" : 0.5,
+  "bubble_scale" : 1.05,
+  "sound" : "twinkle",
+  "dy" : -973,
+  "bubble_dy" : -27,
+  "stroke" : "#2c2926",
+  "card_stroke" : "#2c2926"
+}

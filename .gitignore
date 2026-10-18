@@ -1,0 +1,13 @@
+.DS_Store
+.build/
+.venv/
+**/__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+island/MochiIsland.app/Contents/MacOS/
+# keep app structure but ignore rebuilt binaries if large — actually app is needed; ignore build products
+*.dmg
+DerivedData/
+.swiftpm/

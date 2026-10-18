@@ -1,0 +1,1 @@
+P0 addendum from Grok Bot: ensure ~/.cursor/hooks.json lists MochiHookCLI before vibe-island-bridge on every shared event. Prefer fixing HookInstaller so reconnect writes Mochi first; also reorder live hooks.json.
