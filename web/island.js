@@ -22,6 +22,8 @@ const KIND_LABEL = {
   permission: "Permission",
 };
 const collapsedByUser = new Set();
+const choiceOverlay = new Map();
+let latestTasks = [];
 const fillInput = document.getElementById("bubble-fill");
 const textColorInput = document.getElementById("bubble-text-color");
 const strokeInput = document.getElementById("bubble-stroke");
@@ -89,7 +91,7 @@ function islandCall(action, extra = {}) {
       reject(new Error("request failed"));
     }, 8000);
     pendingCalls.set(rpc, { resolve, reject, timer });
-    islandMessage({ action, rpc, ...extra });
+    islandMessage({ ...extra, action, rpc });
   });
 }
 
@@ -110,6 +112,10 @@ window.pushTasks = (tasks, state) => {
   }
   renderCursorTasks(tasks);
   requestAnimationFrame(reportHotRects);
+};
+
+window.__mochiClearChoices = () => {
+  choiceOverlay.clear();
 };
 
 function fillSoundPicks() {
@@ -562,6 +568,17 @@ function truncateTitle(text) {
   return next.length > 36 ? `${next.slice(0, 35)}…` : next;
 }
 
+function taskSource(task) {
+  const value = String((task && task.source) || "").trim().toLowerCase();
+  if (value === "codex") {
+    return "codex";
+  }
+  if (value === "grok-bot" || value === "grok" || value === "grokbot" || value === "grok bot") {
+    return "grok-bot";
+  }
+  return "cursor";
+}
+
 function taskOptions(task) {
   if (task.kind && task.kind !== "permission") {
     return [{ id: "open", label: "Open Cursor" }];
@@ -589,7 +606,7 @@ function waitToken(task) {
 function fillTaskBubble(node, task, status, title) {
   const text = node.querySelector(".speech-text");
   text.removeAttribute("id");
-  text.innerHTML = `${TASK_MARK[status]}${escapeHtml(title)}`;
+  text.innerHTML = `${TASK_MARK[status] || TASK_MARK.running}<span class="speech-title">${escapeHtml(title)}</span>`;
   let detail = node.querySelector(".speech-detail");
   if (!detail) {
     detail = document.createElement("div");
@@ -624,24 +641,50 @@ function fillTaskBubble(node, task, status, title) {
   detail.innerHTML = bits.join("");
 }
 
-function toggleTaskOpen(event) {
-  const node = event.currentTarget;
+function openAgentWindow(source, taskId) {
+  return islandCall("openAgent", {
+    source: source || "cursor",
+    id: taskId || "",
+  });
+}
+
+function onTaskSurfaceClick(event) {
   if (event.target.closest(".speech-option")) {
+    event.stopPropagation();
     return;
   }
+  event.preventDefault();
   event.stopPropagation();
-  if (node.dataset.wait !== "1") {
+  const node = event.currentTarget;
+  openAgentWindow(node.dataset.source || "cursor", node.dataset.taskId || "").catch(() => {});
+}
+
+function applyChoiceBubble(node, label) {
+  const id = node.dataset.taskId || "";
+  const picked = String(label || "").trim() || "Chosen";
+  if (id) {
+    choiceOverlay.set(id, picked);
+  }
+  node.dataset.wait = "0";
+  node.classList.remove("is-open");
+  node.dataset.taskKey = `choice:${picked}`;
+  const title = node.querySelector(".speech-title");
+  if (title) {
+    title.textContent = picked;
+  }
+  const detail = node.querySelector(".speech-detail");
+  if (detail) {
+    detail.innerHTML = '<p class="speech-choice-error hidden"></p>';
+  }
+}
+
+function showChoiceError(node, message) {
+  const error = node.querySelector(".speech-choice-error");
+  if (!error) {
     return;
   }
-  const id = node.dataset.taskId;
-  const open = !node.classList.contains("is-open");
-  node.classList.toggle("is-open", open);
-  if (open) {
-    collapsedByUser.delete(id);
-  } else {
-    collapsedByUser.add(id);
-  }
-  pulseGlass(560);
+  error.textContent = message;
+  error.classList.remove("hidden");
 }
 
 async function chooseTaskOption(event) {
@@ -655,35 +698,57 @@ async function chooseTaskOption(event) {
   if (!node) {
     return;
   }
-  const error = node.querySelector(".speech-choice-error");
-  button.disabled = true;
+  const started = performance.now();
+  const optionId = button.dataset.optionId || "";
+  const label = button.dataset.label || button.textContent || "";
+  const id = node.dataset.taskId || "";
+  applyChoiceBubble(node, label);
+  if (window.__mochiMeasure) {
+      window.__mochiMeasure.choiceBubbleMs = performance.now() - started;
+    window.__mochiMeasure.choiceBubbleDone = true;
+  }
   try {
     const result = await islandCall("cursorChoice", {
-      id: node.dataset.taskId,
+      id,
       kind: node.dataset.kind || "",
       request_id: node.dataset.requestId || "",
       question_id: node.dataset.questionId || "",
-      option_id: button.dataset.optionId || "",
-      action: button.dataset.optionId || "",
-      label: button.dataset.label || button.textContent,
+      option_id: optionId,
+      label,
     });
-    if (error) {
-      const ok = Boolean(result && result.ok);
-      error.textContent = ok ? "" : (result && result.error) || "未能点到 Cursor，请在对话里选";
-      error.classList.toggle("hidden", ok);
+    if (window.__mochiMeasure) {
+      window.__mochiMeasure.choiceReplyMs = performance.now() - started;
+      window.__mochiMeasure.choiceReplyDone = true;
+    }
+    const ok = Boolean(result && result.ok);
+    if (!ok) {
+      choiceOverlay.delete(id);
+      node.dataset.taskKey = "";
+      renderCursorTasks(latestTasks);
+      const fresh = speechStack.querySelector(`.speech.task[data-task-id="${CSS.escape(id)}"]`);
+      if (fresh) {
+        showChoiceError(fresh, (result && result.error) || "未能点到 Cursor，请在对话里选");
+      }
     }
   } catch (err) {
-    if (error) {
-      error.textContent = "未能点到 Cursor，请在对话里选";
-      error.classList.remove("hidden");
+    if (window.__mochiMeasure) {
+      window.__mochiMeasure.choiceReplyMs = performance.now() - started;
+      window.__mochiMeasure.choiceReplyDone = true;
+    }
+    choiceOverlay.delete(id);
+    node.dataset.taskKey = "";
+    renderCursorTasks(latestTasks);
+    const fresh = speechStack.querySelector(`.speech.task[data-task-id="${CSS.escape(id)}"]`);
+    if (fresh) {
+      showChoiceError(fresh, "未能点到 Cursor，请在对话里选");
     }
   }
-  button.disabled = false;
   requestAnimationFrame(reportHotRects);
 }
 
 function renderCursorTasks(tasks) {
   const list = Array.isArray(tasks) ? tasks : [];
+  latestTasks = list;
   const existing = new Map();
   speechStack.querySelectorAll(".speech.task").forEach((el) => {
     existing.set(el.dataset.taskId, el);
@@ -699,10 +764,25 @@ function renderCursorTasks(tasks) {
   let resized = false;
   list.forEach((task, index) => {
     const id = String(task.id || index);
-    const status = TASK_MARK[task.status] ? task.status : "running";
-    const title = truncateTitle(task.title);
-    const token = waitToken(task);
-    const contentKey = `${status}:${title}:${task.kind || ""}:${task.prompt || ""}:${task.request_id || ""}:${JSON.stringify(task.options || [])}`;
+    let view = task;
+    const picked = choiceOverlay.get(id);
+    if (picked && task.status === "wait") {
+      view = {
+        ...task,
+        status: "running",
+        title: picked,
+        options: [],
+        prompt: "",
+        detail: "",
+      };
+    } else if (picked) {
+      choiceOverlay.delete(id);
+    }
+    const status = TASK_MARK[view.status] ? view.status : "running";
+    const title = truncateTitle(view.title);
+    const source = taskSource(view);
+    const token = waitToken(view);
+    const contentKey = `${status}:${title}:${source}:${view.kind || ""}:${view.prompt || ""}:${view.request_id || ""}:${JSON.stringify(view.options || [])}`;
     seen.add(id);
     if (status !== "wait") {
       collapsedByUser.delete(id);
@@ -721,16 +801,17 @@ function renderCursorTasks(tasks) {
       node.dataset.taskId = id;
       node.classList.add("task");
       node.classList.remove("hidden", "pop", "dragging");
-      node.addEventListener("click", toggleTaskOpen);
+      node.addEventListener("click", onTaskSurfaceClick);
       node.addEventListener("pointerenter", () => requestAnimationFrame(reportHotRects));
       node.addEventListener("pointerleave", () => requestAnimationFrame(reportHotRects));
       node.querySelector(".speech-inner").addEventListener("click", chooseTaskOption);
     }
     node.dataset.wait = status === "wait" ? "1" : "0";
     node.dataset.waitToken = token;
-    node.dataset.kind = task.kind || "";
-    node.dataset.requestId = task.request_id || "";
-    node.dataset.questionId = task.question_id || "";
+    node.dataset.source = source;
+    node.dataset.kind = view.kind || "";
+    node.dataset.requestId = view.request_id || "";
+    node.dataset.questionId = view.question_id || "";
     if (node.classList.contains("is-open") !== shouldOpen) {
       resized = true;
     }
@@ -738,7 +819,7 @@ function renderCursorTasks(tasks) {
     if (node.dataset.taskKey !== contentKey) {
       resized = true;
       node.dataset.taskKey = contentKey;
-      fillTaskBubble(node, task, status, title);
+      fillTaskBubble(node, view, status, title);
     }
     speechStack.appendChild(node);
   });
@@ -1126,6 +1207,25 @@ document.querySelectorAll(".swatches").forEach((row) => {
 document.getElementById("cursor-scan").addEventListener("change", (event) => {
   islandCall("setScan", { enabled: event.target.checked }).catch(() => {});
 });
+function bindFileSource(buttonId, statusId, readyLabel) {
+  const button = document.getElementById(buttonId);
+  if (!button) {
+    return;
+  }
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    button.classList.add("connected");
+    button.textContent = readyLabel;
+    const status = document.getElementById(statusId);
+    if (status) {
+      status.textContent = "Listening for tasks";
+    }
+  });
+}
+
+bindFileSource("codex-link-btn", "codex-link-status", "Codex ready");
+bindFileSource("grok-link-btn", "grok-link-status", "Grok Bot ready");
+
 document.getElementById("cursor-link-btn").addEventListener("click", async (event) => {
   event.stopPropagation();
   const action = cursorLinked ? "disconnect" : "connect";

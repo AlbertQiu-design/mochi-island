@@ -177,9 +177,15 @@ body {
   transition: color 0.3s ease;
 }
 
+.speech.task {
+  cursor: pointer;
+}
+
 .speech.task .speech-inner {
   height: var(--chip-height);
   min-height: var(--chip-height);
+  max-width: 220px;
+  min-width: 0;
   padding: 0 var(--chip-pad-end) 0 var(--chip-pad-start);
   align-items: center;
   justify-content: flex-start;
@@ -187,17 +193,20 @@ body {
 }
 
 .speech.task .speech-text {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: var(--chip-gap);
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
   height: var(--chip-height);
   max-height: var(--chip-height);
   line-height: var(--chip-height);
   font-size: var(--chip-font);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
   text-align: left;
   font-family: "PingFang SC", "PingFangSC-Regular", "PingFang HK", "Hiragino Sans GB", sans-serif;
   font-weight: 500;
@@ -212,6 +221,24 @@ body {
   margin: 0;
   object-fit: contain;
   pointer-events: none;
+}
+
+.speech-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.speech.task[data-source="codex"] .speech-title::before {
+  content: "Codex · ";
+  color: #3d6ea8;
+}
+
+.speech.task[data-source="grok-bot"] .speech-title::before {
+  content: "Grok · ";
+  color: #e97868;
 }
 
 .speech.task.is-open .speech-inner {
@@ -232,9 +259,16 @@ body {
   max-width: none;
   max-height: none;
   line-height: 1.35;
+  overflow: visible;
   white-space: normal;
   justify-content: flex-start;
   text-align: left;
+}
+
+.speech.task.is-open .speech-title {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .speech-detail {
@@ -252,7 +286,8 @@ body {
 }
 
 .speech.task.is-open .speech-detail {
-  max-height: 240px;
+  max-height: 280px;
+  overflow-y: auto;
   opacity: 1;
 }
 
@@ -671,7 +706,8 @@ body.popup-up.settings-closing .settings-card {
   font-family: "PingFang SC", "PingFang HK", sans-serif;
 }
 
-#cursor-link-btn.connected {
+#cursor-link-btn.connected,
+.settings-pane > button.connected {
   background: var(--happy);
 }
 

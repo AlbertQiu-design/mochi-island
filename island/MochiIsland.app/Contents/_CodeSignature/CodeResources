@@ -10,15 +10,15 @@
 		</data>
 		<key>Resources/Web/island.css</key>
 		<data>
-		u/JZqWWA+CER2CZETcdDCuc+U5c=
+		1/2VMS1x90KUMq/Mnqc4K4kE7s8=
 		</data>
 		<key>Resources/Web/island.html</key>
 		<data>
-		Iv6133ercjqnRrA5MHgjStVHW7Y=
+		dC1BFbPq0O0MpmlyrbkLX05YoRA=
 		</data>
 		<key>Resources/Web/island.js</key>
 		<data>
-		CbLjvlxTUaSnTzy0Un8UuCmNYdE=
+		D4eXxrNfbMwqIQuc3czk18rar3c=
 		</data>
 		<key>Resources/Web/pets/angry.png</key>
 		<data>
@@ -67,10 +67,10 @@
 		<dict>
 			<key>cdhash</key>
 			<data>
-			wmeVE4HUewh3uPu7iJXXaml0NSA=
+			5sk+VdWMBsS7zv3noH6T/Sv9BGw=
 			</data>
 			<key>requirement</key>
-			<string>cdhash H"c267951381d47b0877b8fbbb8895d76a69743520"</string>
+			<string>cdhash H"e6c93e55d58c06c4bbcefde7a07e93fd2bfd046c"</string>
 		</dict>
 		<key>Resources/AppIcon.icns</key>
 		<dict>
@@ -83,21 +83,21 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			dywD2IyZOSG48ee6LBzRKxIdyeJc8puipXpJk6+cuwg=
+			q3B7S8PskT5A9lcmQeaeuSqn7O05W32LTLChDxHB8RY=
 			</data>
 		</dict>
 		<key>Resources/Web/island.html</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			E4/bHPebPJqumg7dv/1NbwH8YizEQj5o4WLjy88TEuo=
+			GQnhHZZfa4QVK+7BhsNkDpPhehUtF+ZfiQyW/YRNhhg=
 			</data>
 		</dict>
 		<key>Resources/Web/island.js</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			+9m5lsrlIucJoLmO/2s2cHPCZV2xvozRlfS8N97PpmE=
+			Rb7wacUmHBORVgwg2qDddf1oxrStUyhcCcDtcyxv0GE=
 			</data>
 		</dict>
 		<key>Resources/Web/pets/angry.png</key>

@@ -77,19 +77,39 @@ final class AppSession {
 
     func choicePayload(_ body: [String: Any]) -> [String: Any] {
         let kind = body["kind"] as? String ?? ""
-        let action = ((body["action"] as? String) ?? (body["option_id"] as? String) ?? "").lowercased()
-        if kind != "permission" || action == "open" {
-            openCursor()
-            return ["ok": true, "opened": true]
-        }
+        let action = (body["option_id"] as? String) ?? ""
         let id = body["id"] as? String ?? ""
         let requestID = body["request_id"] as? String ?? ""
         do {
-            try ReplyWriter.writePermission(id: id, requestID: requestID, action: action, to: replyURL)
+            try ReplyWriter.writeChoice(id: id, requestID: requestID, action: action, kind: kind, to: replyURL)
             return ["ok": true]
         } catch {
             return ["ok": false, "error": "Could not save the reply. Choose it in Cursor."]
         }
+    }
+
+    func openAgent(source: String, taskID: String) -> [String: Any] {
+        let plan = AgentLaunch.plan(source: source)
+        let normalized = AgentLaunch.normalize(source)
+        if let path = plan.appPath {
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            return ["ok": true, "opened": true, "source": normalized, "app": path, "id": taskID]
+        }
+        if let raw = plan.url, let url = URL(string: raw) {
+            NSWorkspace.shared.open(url)
+            var payload: [String: Any] = [
+                "ok": true,
+                "opened": true,
+                "source": normalized,
+                "url": raw,
+                "id": taskID
+            ]
+            if let note = plan.note {
+                payload["note"] = note
+            }
+            return payload
+        }
+        return ["ok": false, "source": normalized, "id": taskID, "error": plan.note ?? "Could not open that agent."]
     }
 
     func setScanTranscripts(_ enabled: Bool) {
@@ -105,11 +125,6 @@ final class AppSession {
             tasks.append(hint)
         }
         return tasks.sorted { $0.id < $1.id }
-    }
-
-    private func openCursor() {
-        let url = URL(fileURLWithPath: "/Applications/Cursor.app")
-        NSWorkspace.shared.open(url)
     }
 
     private func hookBinary() -> URL {
