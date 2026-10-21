@@ -124,7 +124,8 @@ func HookInstallBacksUpAndMarksEntries() throws {
         try Data("#!/bin/sh\nexit 0\n".utf8).write(to: binary)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary.path)
         let hooks = directory.appendingPathComponent("hooks.json")
-        try #"{"version":1,"hooks":{"sessionStart":[{"command":"/bin/echo keep"}]}}"#.data(using: .utf8)?.write(to: hooks)
+        let raw = #"{"version":1,"hooks":{"sessionStart":[{"command":"/bin/echo keep"}],"stop":[{"command":"/tmp/vibe-island-bridge --source cursor"}]}}"#
+        try raw.data(using: .utf8)?.write(to: hooks)
         let tasks = directory.appendingPathComponent("tasks.json")
         let blocked = HookInstaller.install(hooksURL: hooks, binaryURL: binary, tasksURL: tasks, privacyAccepted: false)
         check(blocked.needsPrivacy)
@@ -136,13 +137,27 @@ func HookInstallBacksUpAndMarksEntries() throws {
         let table = json?["hooks"] as? [String: Any]
         let entries = table?["sessionStart"] as? [[String: Any]]
         check(entries?.count == 2)
-        check(entries?.last?[AppConfig.hookMarker] as? Int == AppConfig.hookVersion)
+        check(entries?.first?[AppConfig.hookMarker] as? Int == AppConfig.hookVersion)
+        check(entries?.last?["command"] as? String == "/bin/echo keep")
+        let stop = table?["stop"] as? [[String: Any]]
+        check(stop?.count == 2)
+        check(stop?.first?[AppConfig.hookMarker] as? Int == AppConfig.hookVersion)
+        check((stop?.last?["command"] as? String)?.contains("vibe-island-bridge") == true)
+        for name in ["afterAgentResponse", "afterFileEdit"] {
+            let list = table?[name] as? [[String: Any]]
+            check(list?.first?[AppConfig.hookMarker] as? Int == AppConfig.hookVersion)
+        }
+        let shell = table?["beforeShellExecution"] as? [[String: Any]]
+        check(shell?.first?["timeout"] as? Int == 300)
         let removed = HookInstaller.remove(hooksURL: hooks, binaryURL: binary, tasksURL: tasks)
         check(!removed.connected)
         let after = try JSONSerialization.jsonObject(with: Data(contentsOf: hooks)) as? [String: Any]
         let left = (after?["hooks"] as? [String: Any])?["sessionStart"] as? [[String: Any]]
         check(left?.count == 1)
         check(left?.first?["command"] as? String == "/bin/echo keep")
+        let leftStop = (after?["hooks"] as? [String: Any])?["stop"] as? [[String: Any]]
+        check(leftStop?.count == 1)
+        check((leftStop?.first?["command"] as? String)?.contains("vibe-island-bridge") == true)
     }
 
 func TaskWatchFiresWhenTheFileIsReplaced() throws {
@@ -208,6 +223,171 @@ func ReplyWriterOnlyAllowsPermissionActions() throws {
             threw = true
         }
         check(threw)
+        let choiceURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        try ReplyWriter.writeChoice(id: "t2", requestID: "r2", action: "approve", kind: "plan", to: choiceURL)
+        let choice = try JSONSerialization.jsonObject(with: Data(contentsOf: choiceURL)) as? [String: Any]
+        check(choice?["action"] as? String == "approve")
+        check(choice?["kind"] as? String == "plan")
+        check(choice?["option_id"] as? String == "approve")
+    }
+
+func TaskReaderKeepsSource() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-src-\(UUID().uuidString).json")
+        let now = Date().timeIntervalSince1970
+        let payload: [String: Any] = [
+            "tasks": [
+                "c": ["id": "c", "title": "Cursor", "status": "running", "updated": now, "source": "cursor"],
+                "x": ["id": "x", "title": "Codex", "status": "running", "updated": now, "source": "codex"],
+                "g": ["id": "g", "title": "Grok", "status": "running", "updated": now, "source": "grok-bot"],
+                "z": ["id": "z", "title": "Other", "status": "running", "updated": now, "source": "nope"]
+            ]
+        ]
+        try JSONSerialization.data(withJSONObject: payload).write(to: url)
+        let tasks = TaskReader.load(tasksURL: url, now: now)
+        let byID = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0.source) })
+        check(byID["c"] == "cursor")
+        check(byID["x"] == "codex")
+        check(byID["g"] == "grok-bot")
+        check(byID["z"] == "cursor")
+        check(tasks.first { $0.id == "x" }?.dictionary["source"] as? String == "codex")
+    }
+
+func AgentLaunchFindsInstalledAppsAndCodexFallback() {
+        let cursor = AgentLaunch.plan(source: "Cursor") { path in
+            path.hasSuffix("/Cursor.app")
+        }
+        check(cursor.appPath?.hasSuffix("/Cursor.app") == true)
+        check(cursor.url == nil)
+        let missing = AgentLaunch.plan(source: "codex") { _ in false }
+        check(missing.appPath == nil)
+        check(missing.url == "https://chatgpt.com/codex")
+        check(missing.note?.contains("Codex.app") == true)
+        let grok = AgentLaunch.plan(source: "grok bot") { path in
+            path.hasSuffix("/Grok Bot.app")
+        }
+        check(grok.appPath?.hasSuffix("/Grok Bot.app") == true)
+    }
+
+struct SplitMix64: RandomNumberGenerator {
+    var state: UInt64
+    init(seed: UInt64) { self.state = seed }
+    mutating func next() -> UInt64 {
+        state &+= 0x9E3779B97F4A7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
+        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
+        return z ^ (z >> 31)
+    }
+}
+
+func DockPrefDefaultsToRight() {
+    let missing = IslandPrefs.parse([:])
+    check(missing.dock == "right")
+    let left = IslandPrefs.parse(["dock": "left"])
+    check(left.dock == "left")
+    check(left.dictionary["dock"] as? String == "left")
+    let right = IslandPrefs.parse(["dock": "right"], base: IslandPrefs(dock: "left"))
+    check(right.dock == "right")
+    let junk = IslandPrefs.parse(["dock": "middle"], base: IslandPrefs(dock: "left"))
+    check(junk.dock == "left")
+}
+
+func EmptySlotFileSeedsThreeDistinctBlobs() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-slots-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let disk = DialogueSlotDisk(directory: directory)
+    let store = disk.load(now: 10)
+    check(store.slots.count == 3)
+    check(Set(store.slots.map(\.source)) == Set(DialogueSlotStore.seedSources))
+    let skins = Set(store.slots.map(\.skin))
+    check(skins.count == 3)
+    check(store.slots.allSatisfy { DialogueSlotStore.skins.contains($0.skin) })
+    check(store.selected == store.slots[0].id)
+    check(!store.slots[0].skin.contains("happy"))
+    check(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("mochi-island-tasks.json").path))
+    let again = disk.load(now: 99)
+    check(again == store)
+}
+
+func MergeKeepsSkinAndLeavesSlotsWhenTasksLeave() {
+    var rng = SplitMix64(seed: 3)
+    let seeded = DialogueSlotStore.seed(now: 1, rng: &rng)
+    let keptID = seeded.slots[0].id
+    let stillThere = seeded.merged(with: [])
+    check(stillThere.slots.contains { $0.id == keptID })
+
+    let stable = DialogueSlotStore.stableSkin(for: "abc")
+    let other = DialogueSlotStore.skins.first { $0 != stable } ?? "blob-0"
+    let store = DialogueSlotStore(
+        selected: "abc",
+        slots: [DialogueSlot(id: "abc", source: "cursor", title: "Keep", skin: other, created: 1)]
+    )
+    let task = CursorTask(id: "abc", title: "From bus", status: "running", source: "codex", updated: 5)
+    let merged = store.merged(with: [task])
+    check(merged.slots.count == 1)
+    check(merged.slots[0].skin == other)
+    check(merged.slots[0].source == "codex")
+    check(merged.slots[0].title == "From bus")
+    check(merged.merged(with: [task]).slots[0].skin == other)
+
+    let added = DialogueSlotStore().merged(with: [task])
+    check(added.slots[0].skin == stable)
+    check(added.slots[0].skin.hasPrefix("blob-"))
+}
+
+func CreateSlotAppendsABlobWithoutATaskFile() {
+    var rng = SplitMix64(seed: 9)
+    let store = DialogueSlotStore.seed(now: 2, rng: &rng)
+    var createRNG = SplitMix64(seed: 11)
+    let (next, slot) = store.created(source: "Grok Bot", now: 20, rng: &createRNG)
+    check(next.slots.count == store.slots.count + 1)
+    check(next.selected == slot.id)
+    check(slot.source == "grok-bot")
+    check(slot.title == "New chat")
+    check(DialogueSlotStore.skins.contains(slot.skin))
+    check(!slot.skin.contains("happy"))
+}
+
+func NewWaitSelectsOnlyAfterTheFirstSnapshot() {
+    var rng = SplitMix64(seed: 4)
+    let store = DialogueSlotStore.seed(now: 1, rng: &rng)
+    var known: Set<String> = []
+    var primed = false
+    let first = store.selectingNewWaits(
+        in: [CursorTask(id: "w", title: "Waiting", status: "wait", updated: 9)],
+        known: &known,
+        primed: &primed
+    )
+    check(primed)
+    check(first.selected == store.selected)
+    check(first.slots.contains { $0.id == "w" })
+    let second = first.selectingNewWaits(
+        in: [
+            CursorTask(id: "w", title: "Waiting", status: "wait", updated: 9),
+            CursorTask(id: "w2", title: "Newer", status: "wait", source: "codex", updated: 12)
+        ],
+        known: &known,
+        primed: &primed
+    )
+    check(second.selected == "w2")
+    check(second.slots.contains { $0.id == "w" })
+    check(second.slots.first { $0.id == "w2" }?.source == "codex")
+}
+
+func LiveHooksFixWhenAsked() {
+        guard let binary = ProcessInfo.processInfo.environment["MOCHI_FIX_LIVE_HOOKS"], !binary.isEmpty else { return }
+        let cursor = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cursor", isDirectory: true)
+        let result = HookInstaller.install(
+            hooksURL: cursor.appendingPathComponent("hooks.json"),
+            binaryURL: URL(fileURLWithPath: binary),
+            tasksURL: cursor.appendingPathComponent("mochi-island-tasks.json"),
+            privacyAccepted: true
+        )
+        if !result.connected {
+            fputs("FAIL live hooks \(result.error ?? "")\n", stderr)
+            exit(1)
+        }
+        print("live hooks updated")
     }
 
 PlayReducesEnergy()
@@ -223,4 +403,12 @@ OnlyRunningToDoneFeeds()
 try HookInstallBacksUpAndMarksEntries()
 try TaskWatchFiresWhenTheFileIsReplaced()
 try ReplyWriterOnlyAllowsPermissionActions()
+try TaskReaderKeepsSource()
+AgentLaunchFindsInstalledAppsAndCodexFallback()
+DockPrefDefaultsToRight()
+try EmptySlotFileSeedsThreeDistinctBlobs()
+MergeKeepsSkinAndLeavesSlotsWhenTasksLeave()
+CreateSlotAppendsABlobWithoutATaskFile()
+NewWaitSelectsOnlyAfterTheFirstSnapshot()
+LiveHooksFixWhenAsked()
 print("MochiCore checks passed")

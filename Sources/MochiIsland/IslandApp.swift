@@ -205,9 +205,16 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
             ))
         case "cursorChoice":
             reply(requestID, session.choicePayload(body))
+        case "openAgent":
+            reply(requestID, session.openAgent(
+                source: body["source"] as? String ?? "",
+                taskID: body["id"] as? String ?? ""
+            ))
         case "setScan":
             session.setScanTranscripts(body["enabled"] as? Bool ?? false)
             reply(requestID, ["ok": true, "scanTranscripts": session.currentPrefs.scanTranscripts])
+        case "createSlot":
+            reply(requestID, session.createSlot(source: body["source"] as? String ?? ""))
         default:
             break
         }
@@ -481,6 +488,13 @@ final class Runtime: NSObject, NSApplicationDelegate {
 @main
 enum MochiIsland {
     static func main() {
+        if CommandLine.arguments.contains("--measure-latency") {
+            let app = NSApplication.shared
+            app.setActivationPolicy(.accessory)
+            app.delegate = LatencyHarness.shared
+            app.run()
+            return
+        }
         let app = NSApplication.shared
         app.delegate = Runtime.shared
         app.setActivationPolicy(.regular)

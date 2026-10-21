@@ -40,6 +40,9 @@ public enum HookInstaller {
         "beforeMCPExecution",
         "afterMCPExecution",
         "afterAgentThought",
+        "afterAgentResponse",
+        "afterFileEdit",
+        "stop",
         "sessionEnd",
         "subagentStop"
     ]
@@ -72,7 +75,7 @@ public enum HookInstaller {
             if permissionEvents.contains(event) {
                 entry["timeout"] = 300
             }
-            entries.append(entry)
+            entries.insert(entry, at: 0)
             hooks[event] = entries
         }
         root["version"] = 1

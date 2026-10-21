@@ -4,91 +4,53 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mochi Island</title>
-    <link rel="stylesheet" href="island.css?v=37" />
+    <link rel="stylesheet" href="island.css?v=42" />
   </head>
-  <body>
+  <body data-dock="right">
     <div id="island" class="island">
-      <div id="cat-wrap" class="cat-wrap">
-        <img id="cat-art" class="cat" src="pets/happy.png" alt="Mochi" />
-      </div>
-      <div id="speech-stack" class="speech-stack">
-        <div id="speech" class="speech">
-          <div class="speech-inner">
-            <p id="toast" class="speech-text">Let's take care of Mochi!</p>
-          </div>
-        </div>
-      </div>
-      <div class="panel" id="panel">
-        <div class="stats">
-          <div class="stat">
-            <span>Hunger</span>
-            <div class="bar hunger"><i id="hunger-bar"></i></div>
-            <b id="hunger-value">0</b>
-          </div>
-          <div class="stat">
-            <span>Energy</span>
-            <div class="bar energy"><i id="energy-bar"></i></div>
-            <b id="energy-value">0</b>
-          </div>
-          <div class="stat">
-            <span>Happy</span>
-            <div class="bar happy"><i id="happiness-bar"></i></div>
-            <b id="happiness-value">0</b>
-          </div>
-        </div>
-        <div class="row">
-          <button id="play-btn" class="play" data-action="play" type="button">Play</button>
+      <aside id="capsule" class="capsule">
+        <div id="slot-list" class="slot-list"></div>
+        <div class="capsule-foot">
+          <button id="add-btn" class="add-btn" type="button" aria-label="New chat">+</button>
           <button id="settings-btn" class="gear" type="button" aria-label="Settings">⚙</button>
         </div>
+      </aside>
+      <div id="source-menu" class="source-menu" hidden>
+        <button type="button" data-source="cursor">Cursor</button>
+        <button type="button" data-source="codex">Codex</button>
+        <button type="button" data-source="grok-bot">Grok Bot</button>
       </div>
+      <article id="popup" class="popup" hidden>
+        <header class="popup-bar">
+          <span class="popup-source" aria-hidden="true"></span>
+          <div class="popup-line">
+            <span class="popup-app"></span>
+            <div class="popup-title speech-title"></div>
+          </div>
+        </header>
+        <div class="popup-body">
+          <div class="popup-summary"></div>
+        </div>
+      </article>
       <div class="settings-card" id="settings-card">
         <nav class="settings-nav" id="settings-nav">
-          <button type="button" data-pane="looks" class="active">Looks</button>
-          <button type="button" data-pane="position">Position</button>
+          <button type="button" data-pane="dock" class="active">Dock</button>
+          <button type="button" data-pane="looks">Looks</button>
           <button type="button" data-pane="colors">Colors</button>
           <button type="button" data-pane="sound">Sound</button>
           <button type="button" data-pane="cursor">Cursor</button>
         </nav>
         <div class="settings-body">
-          <section class="settings-pane active" data-pane="looks">
+          <section class="settings-pane active" data-pane="dock">
+            <p class="nudge-title">Side</p>
+            <div class="dock-picks" id="dock-picks">
+              <button type="button" data-dock="left">Left</button>
+              <button type="button" data-dock="right" class="active">Right</button>
+            </div>
+          </section>
+          <section class="settings-pane" data-pane="looks">
             <p class="nudge-title">Choose a pet</p>
             <div class="look-picks" id="look-picks"></div>
-          </section>
-          <section class="settings-pane" data-pane="position">
-            <p class="nudge-title">Pet</p>
-            <div class="axis">
-              <span>Left</span>
-              <input id="pet-x" type="range" min="-480" max="480" value="0" />
-              <span>Right</span>
-            </div>
-            <div class="axis">
-              <span>Down</span>
-              <input id="pet-y" type="range" min="-480" max="480" value="0" />
-              <span>Up</span>
-            </div>
-            <div class="axis">
-              <span>Small</span>
-              <input id="pet-size" type="range" min="50" max="200" value="100" />
-              <span>Large</span>
-            </div>
-            <button id="reset-pet" type="button">Reset</button>
-            <p class="nudge-title">Bubble</p>
-            <div class="axis">
-              <span>Left</span>
-              <input id="bubble-x" type="range" min="-480" max="480" value="0" />
-              <span>Right</span>
-            </div>
-            <div class="axis">
-              <span>Down</span>
-              <input id="bubble-y" type="range" min="-480" max="480" value="0" />
-              <span>Up</span>
-            </div>
-            <div class="axis">
-              <span>Small</span>
-              <input id="bubble-size" type="range" min="50" max="200" value="100" />
-              <span>Large</span>
-            </div>
-            <button id="reset-bubble" type="button">Reset</button>
           </section>
           <section class="settings-pane" data-pane="colors">
             <p class="nudge-title">Bubble</p>
@@ -99,7 +61,7 @@
             <label>Stroke <input id="bubble-stroke" type="text" value="#2c2926" maxlength="7" spellcheck="false" /></label>
             <div class="swatches" data-target="stroke"></div>
             <p class="nudge-title">Cards</p>
-            <label>Fill <input id="card-fill" type="text" value="#fffdf8" maxlength="7" spellcheck="false" /></label>
+            <label>Fill <input id="card-fill" type="text" value="#111111" maxlength="7" spellcheck="false" /></label>
             <div class="swatches" data-target="card-fill"></div>
             <label>Stroke <input id="card-stroke" type="text" value="#2c2926" maxlength="7" spellcheck="false" /></label>
             <div class="swatches" data-target="card-stroke"></div>
@@ -114,10 +76,16 @@
             <p id="cursor-privacy" class="cursor-privacy hidden">Mochi only reads and writes its own files in ~/.cursor on this Mac. It does not upload chats. Allow and deny stay on this computer.</p>
             <button id="cursor-link-btn" type="button">Connect Cursor</button>
             <label class="cursor-scan"><input id="cursor-scan" type="checkbox" /> Notice recent local agent files</label>
+            <p class="nudge-title">Codex</p>
+            <p id="codex-link-status" class="cursor-link-status">Upsert into the task file</p>
+            <button id="codex-link-btn" type="button">Connect Codex</button>
+            <p class="nudge-title">Grok Bot</p>
+            <p id="grok-link-status" class="cursor-link-status">Upsert into the task file</p>
+            <button id="grok-link-btn" type="button">Connect Grok Bot</button>
           </section>
         </div>
       </div>
     </div>
-    <script src="island.js?v=38"></script>
+    <script src="island.js?v=42"></script>
   </body>
 </html>

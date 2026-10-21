@@ -16,8 +16,10 @@ public struct IslandPrefs: Codable, Equatable {
     public var bubbleScale: Double
     public var cursorPrivacyAccepted: Bool
     public var scanTranscripts: Bool
+    public var dock: String
 
     public static let soundIDs = ["boop", "chirp", "mew", "pop", "twinkle"]
+    public static let docks = ["left", "right"]
 
     public init(
         dx: Double = 0,
@@ -34,7 +36,8 @@ public struct IslandPrefs: Codable, Equatable {
         petScale: Double = 1,
         bubbleScale: Double = 1,
         cursorPrivacyAccepted: Bool = false,
-        scanTranscripts: Bool = false
+        scanTranscripts: Bool = false,
+        dock: String = "right"
     ) {
         self.dx = dx
         self.dy = dy
@@ -51,6 +54,7 @@ public struct IslandPrefs: Codable, Equatable {
         self.bubbleScale = bubbleScale
         self.cursorPrivacyAccepted = cursorPrivacyAccepted
         self.scanTranscripts = scanTranscripts
+        self.dock = Self.docks.contains(dock) ? dock : "right"
     }
 
     public var dictionary: [String: Any] {
@@ -67,7 +71,8 @@ public struct IslandPrefs: Codable, Equatable {
             "sound": sound,
             "look": look,
             "pet_scale": petScale,
-            "bubble_scale": bubbleScale
+            "bubble_scale": bubbleScale,
+            "dock": dock
         ]
     }
 
@@ -96,6 +101,9 @@ public struct IslandPrefs: Codable, Equatable {
         }
         if let scan = json["scan_transcripts"] as? Bool {
             next.scanTranscripts = scan
+        }
+        if let dock = json["dock"] as? String, docks.contains(dock) {
+            next.dock = dock
         }
         return next
     }
