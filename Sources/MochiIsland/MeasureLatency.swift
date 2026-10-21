@@ -361,7 +361,24 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
         (function () {
         function box(el) {
           var rect = el.getBoundingClientRect();
-          return { w: Math.round(rect.width), h: Math.round(rect.height), left: rect.left, right: rect.right };
+          return { w: Math.round(rect.width), h: Math.round(rect.height), left: rect.left, right: rect.right, top: rect.top };
+        }
+        function shell(el) {
+          var raw = getComputedStyle(el).backgroundColor;
+          var parts = raw.replace(/rgba?\\(/, '').replace(/\\).*/, '').split(',');
+          return Math.round(parseFloat(parts[0])) === 17
+            && Math.round(parseFloat(parts[1])) === 17
+            && Math.round(parseFloat(parts[2])) === 17;
+        }
+        function caretBorders() {
+          var sel = document.querySelector('.slot.selected');
+          if (!sel) return { left: -1, right: -1 };
+          var cs = getComputedStyle(sel, '::after');
+          return {
+            left: Math.round(parseFloat(cs.borderLeftWidth) || 0),
+            right: Math.round(parseFloat(cs.borderRightWidth) || 0),
+            content: cs.content || ''
+          };
         }
         var popupEl = document.getElementById('popup');
         var bar = popupEl.querySelector('.popup-bar');
@@ -369,32 +386,63 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
         var summary = popupEl.querySelector('.popup-summary');
         var capsuleEl = document.querySelector('.capsule');
         var slot = document.querySelector('.slot');
+        var face = slot.querySelector('.slot-face');
+        var src = popupEl.querySelector('.popup-source');
         var right = { popup: box(popupEl), capsule: box(capsuleEl) };
+        var caretRight = caretBorders();
+        var capBox = capsuleEl.getBoundingClientRect();
+        var half = window.innerHeight * 0.5;
+        var centerDelta = Math.abs((capBox.top + capBox.height / 2) - half);
         document.body.dataset.dock = 'left';
         window.applyScreenLayout();
         var left = { popup: box(popupEl), capsule: box(capsuleEl) };
+        var caretLeft = caretBorders();
         document.body.dataset.dock = 'right';
         window.applyScreenLayout();
         var titleStyle = getComputedStyle(title);
         var summaryStyle = getComputedStyle(summary);
-        var face = slot.querySelector('.slot-face');
+        var capStyle = getComputedStyle(capsuleEl);
+        var popupStyle = getComputedStyle(popupEl);
+        var faceBox = face.getBoundingClientRect();
+        var selected = document.querySelector('.slot.selected');
+        var summaryMaxN = parseFloat(summaryStyle.maxHeight);
+        var capsuleMax = parseFloat(capStyle.maxHeight);
+        var popupMax = parseFloat(popupStyle.maxHeight);
         return JSON.stringify({
           popupW: right.popup.w,
           barH: box(bar).h,
           titleEllipsis: titleStyle.textOverflow,
           titleWrap: titleStyle.whiteSpace,
-          summaryMax: summaryStyle.maxHeight,
+          titleSize: titleStyle.fontSize,
+          summaryMaxN: Math.round(summaryMaxN),
           summaryOverflow: summaryStyle.overflowY,
+          summaryWithin: summaryMaxN > 0 && summaryMaxN <= half + 1,
           capsuleW: right.capsule.w,
           slotW: box(slot).w,
           slotH: box(slot).h,
+          faceW: Math.round(faceBox.width),
+          faceH: Math.round(faceBox.height),
+          slotGap: Math.round(parseFloat(getComputedStyle(document.querySelector('.slot-list')).gap) || 0),
           addW: box(document.querySelector('.add-btn')).w,
           gearW: box(document.querySelector('.gear')).w,
+          sourceW: src ? box(src).w : 0,
+          sourceH: src ? box(src).h : 0,
           menuCount: document.querySelectorAll('#source-menu button').length,
           rightInward: right.popup.right <= right.capsule.left + 1,
           leftInward: left.popup.left >= left.capsule.right - 1,
           face: face ? face.className : '',
-          cat: !!slot.querySelector('img')
+          cat: !!slot.querySelector('img'),
+          shellCapsule: shell(capsuleEl),
+          shellPopup: shell(popupEl),
+          withinHalf: capBox.height <= half + 1 && Math.abs(capsuleMax - half) <= 1 && Math.abs(popupMax - half) <= 1,
+          centered: centerDelta <= 1,
+          noPercent: (capsuleEl.textContent || '').indexOf('%') === -1,
+          noRing: !selected || getComputedStyle(selected).boxShadow === 'none',
+          caretRightL: caretRight.left,
+          caretRightR: caretRight.right,
+          caretLeftL: caretLeft.left,
+          caretLeftR: caretLeft.right,
+          caretMark: caretRight.content !== 'none' && caretRight.content !== 'normal'
         });
         })()
         """
@@ -413,19 +461,38 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
                     if let number = style[key] as? NSNumber { return number.boolValue }
                     return false
                 }
-                let titleOK = (style["titleEllipsis"] as? String) == "ellipsis" && (style["titleWrap"] as? String) == "nowrap"
-                let popupOK = whole("popupW") == 280 && whole("barH") == 44
-                let summaryOK = (style["summaryMax"] as? String) == "280px" && (style["summaryOverflow"] as? String) == "auto"
-                let capsuleOK = whole("capsuleW") == 72
+                let titleOK = (style["titleEllipsis"] as? String) == "ellipsis"
+                    && (style["titleWrap"] as? String) == "nowrap"
+                    && (style["titleSize"] as? String) == "14px"
+                let popupOK = whole("popupW") == 200
+                    && whole("barH") == 36
+                    && whole("sourceW") == 16
+                    && whole("sourceH") == 16
+                let summaryOK = flag("summaryWithin") && (style["summaryOverflow"] as? String) == "auto"
+                let capsuleOK = whole("capsuleW") == 56
                     && whole("slotW") == 56
-                    && whole("slotH") == 56
-                    && whole("addW") == 48
-                    && whole("gearW") == 28
+                    && whole("slotH") == 36
+                    && whole("faceW") == 36
+                    && whole("faceH") == 36
+                    && whole("slotGap") == 8
+                    && whole("addW") == 36
+                    && whole("gearW") == 24
                     && whole("menuCount") == 3
+                    && flag("withinHalf")
+                    && flag("centered")
+                    && flag("shellCapsule")
+                    && flag("shellPopup")
+                    && flag("noPercent")
+                    && flag("noRing")
+                let caretOK = flag("caretMark")
+                    && whole("caretRightR") == 8
+                    && whole("caretRightL") == 0
+                    && whole("caretLeftL") == 8
+                    && whole("caretLeftR") == 0
                 let inwardOK = flag("rightInward") && flag("leftInward")
                 let face = style["face"] as? String ?? ""
                 let faceOK = face.contains("blob-") && !flag("cat")
-                if titleOK && popupOK && summaryOK && capsuleOK && inwardOK && faceOK {
+                if titleOK && popupOK && summaryOK && capsuleOK && caretOK && inwardOK && faceOK {
                     self.styleReport = "pass"
                 } else {
                     self.styleReport = "fail \(text)"

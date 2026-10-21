@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mochi Island</title>
-    <link rel="stylesheet" href="island.css?v=41" />
+    <link rel="stylesheet" href="island.css?v=42" />
   </head>
   <body data-dock="right">
     <div id="island" class="island">
@@ -22,8 +22,11 @@
       </div>
       <article id="popup" class="popup" hidden>
         <header class="popup-bar">
-          <div class="popup-app"></div>
-          <div class="popup-title speech-title"></div>
+          <span class="popup-source" aria-hidden="true"></span>
+          <div class="popup-line">
+            <span class="popup-app"></span>
+            <div class="popup-title speech-title"></div>
+          </div>
         </header>
         <div class="popup-body">
           <div class="popup-summary"></div>
@@ -58,7 +61,7 @@
             <label>Stroke <input id="bubble-stroke" type="text" value="#2c2926" maxlength="7" spellcheck="false" /></label>
             <div class="swatches" data-target="stroke"></div>
             <p class="nudge-title">Cards</p>
-            <label>Fill <input id="card-fill" type="text" value="#fffdf8" maxlength="7" spellcheck="false" /></label>
+            <label>Fill <input id="card-fill" type="text" value="#111111" maxlength="7" spellcheck="false" /></label>
             <div class="swatches" data-target="card-fill"></div>
             <label>Stroke <input id="card-stroke" type="text" value="#2c2926" maxlength="7" spellcheck="false" /></label>
             <div class="swatches" data-target="card-stroke"></div>
@@ -83,6 +86,6 @@
         </div>
       </div>
     </div>
-    <script src="island.js?v=41"></script>
+    <script src="island.js?v=42"></script>
   </body>
 </html>

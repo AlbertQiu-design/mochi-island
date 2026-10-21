@@ -275,12 +275,14 @@ function placeFloating() {
   const capsuleBox = capsule.getBoundingClientRect();
   const gap = 8;
   if (!popup.hidden) {
-    const width = 280;
+    const width = 200;
     const slotEl = selectedId ? slotList.querySelector(`.slot[data-task-id="${CSS.escape(selectedId)}"]`) : null;
-    const slotTop = slotEl ? slotEl.getBoundingClientRect().top : capsuleBox.top;
+    const slotBox = slotEl ? slotEl.getBoundingClientRect() : null;
     const height = popup.offsetHeight || 120;
+    const anchorMid = slotBox ? slotBox.top + slotBox.height / 2 : capsuleBox.top + capsuleBox.height / 2;
     let left = dock === "right" ? capsuleBox.left - gap - width : capsuleBox.right + gap;
-    let top = clamp(slotTop, 8, Math.max(8, window.innerHeight - 8 - height));
+    let top = anchorMid - height / 2;
+    top = clamp(top, 8, Math.max(8, window.innerHeight - 8 - height));
     left = clamp(left, 8, Math.max(8, window.innerWidth - 8 - width));
     popup.style.left = `${left}px`;
     popup.style.top = `${top}px`;
@@ -297,7 +299,7 @@ function placeFloating() {
     sourceMenu.style.top = `${top}px`;
   }
   if (document.body.classList.contains("settings-open")) {
-    const width = Math.min(540, Math.max(280, window.innerWidth - 72 - 32));
+    const width = Math.min(540, Math.max(280, window.innerWidth - 56 - 32));
     settingsCard.style.width = `${width}px`;
     const height = settingsCard.offsetHeight || 280;
     const gearBox = settingsBtn.getBoundingClientRect();
@@ -375,7 +377,7 @@ function currentPrefs() {
     fill: normalizeHex(fillInput.value, "#ffffff"),
     text: normalizeHex(textColorInput.value, "#241f1c"),
     stroke: normalizeHex(strokeInput.value, "#2c2926"),
-    card_fill: normalizeHex(cardFillInput.value, "#fffdf8"),
+    card_fill: normalizeHex(cardFillInput.value, "#111111"),
     card_stroke: normalizeHex(cardStrokeInput.value, "#2c2926"),
     sound: currentSound,
     look: currentLook,
@@ -413,7 +415,7 @@ function applyBubbleColors(fill, text, stroke) {
 }
 
 function applyCardColors(fill, stroke) {
-  const nextFill = normalizeHex(fill, "#fffdf8");
+  const nextFill = normalizeHex(fill, "#111111");
   const nextStroke = normalizeHex(stroke, "#2c2926");
   document.documentElement.style.setProperty("--card-fill", nextFill);
   document.documentElement.style.setProperty("--card-stroke", nextStroke);
