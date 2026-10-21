@@ -3,7 +3,7 @@ import Foundation
 import MochiCore
 import WebKit
 
-/// Offscreen pass: file watch → bubble, choice → bubble, choice → reply file.
+/// Offscreen pass: file watch → slot, choice → popup, choice → reply file.
 /// Does not open Cursor, Codex, or Grok, and does not touch the live task file.
 @MainActor
 final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate {
@@ -189,7 +189,7 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
         let tasksJSON = json(payload)
         let id = expectedID
         webView?.evaluateJavaScript(
-            "window.pushTasks(\(tasksJSON), \(stateJSON)); var node=document.querySelector('.speech.task[data-task-id=\"\(id)\"] .speech-title'); node ? 'ok' : 'miss';"
+            "window.pushTasks(\(tasksJSON), \(stateJSON)); var node=document.querySelector('.slot[data-task-id=\"\(id)\"]'); node ? 'ok' : 'miss';"
         ) { [weak self] result, _ in
             DispatchQueue.main.async {
                 guard let self, !self.done else { return }
@@ -231,7 +231,7 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
         window.__mochiClearChoices && window.__mochiClearChoices();
         window.__mochiMeasure = {choiceBubbleDone:false, choiceReplyDone:false};
         window.pushTasks(\(tasksJSON), \(stateJSON));
-        var button = document.querySelector('.speech.task[data-task-id="\(choiceTaskID)"] .speech-option');
+        var button = document.querySelector('#popup .speech-option');
         if (!button) { window.__mochiMeasure.missing = true; window.__mochiMeasure.choiceReplyDone = true; }
         else { button.click(); }
         """
@@ -288,10 +288,11 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
         let script = """
         window.__mochiClearChoices && window.__mochiClearChoices();
         window.pushTasks(\(json(tasks)), \(stateJSON));
-        JSON.stringify([...document.querySelectorAll('.speech.task')].map((node) => ({
+        JSON.stringify([...document.querySelectorAll('.slot')].map((node) => ({
           source: node.dataset.source || '',
-          title: (node.querySelector('.speech-title') || {}).textContent || '',
-          before: getComputedStyle(node.querySelector('.speech-title'), '::before').content
+          app: node.dataset.app || '',
+          selected: node.classList.contains('selected'),
+          popupApp: (document.querySelector('.popup-app') || {}).textContent || ''
         })));
         """
         webView?.evaluateJavaScript(script) { [weak self] result, _ in
@@ -300,11 +301,25 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
                 let text = result as? String ?? "[]"
                 let rows = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [[String: Any]] ?? []
                 let sources = Set(rows.compactMap { $0["source"] as? String })
-                let codex = rows.first { $0["source"] as? String == "codex" }
-                let grok = rows.first { $0["source"] as? String == "grok-bot" }
-                let codexMark = (codex?["before"] as? String ?? "").contains("Codex")
-                let grokMark = (grok?["before"] as? String ?? "").contains("Grok")
-                if sources.isSuperset(of: ["cursor", "codex", "grok-bot"]) && codexMark && grokMark {
+                func appLabel(_ source: String) -> String {
+                    rows.first { $0["source"] as? String == source }?["app"] as? String ?? ""
+                }
+                let labelsMatch = rows.allSatisfy { row in
+                    switch row["source"] as? String {
+                    case "cursor": return row["app"] as? String == "Cursor"
+                    case "codex": return row["app"] as? String == "Codex"
+                    case "grok-bot": return row["app"] as? String == "Grok Bot"
+                    default: return false
+                    }
+                }
+                let selected = rows.first { ($0["selected"] as? Bool) == true || ($0["selected"] as? NSNumber)?.boolValue == true }
+                let popupMatches = (selected?["popupApp"] as? String ?? "") == (selected?["app"] as? String ?? "")
+                if sources.isSuperset(of: ["cursor", "codex", "grok-bot"])
+                    && appLabel("cursor") == "Cursor"
+                    && appLabel("codex") == "Codex"
+                    && appLabel("grok-bot") == "Grok Bot"
+                    && labelsMatch
+                    && popupMatches {
                     self.sourceReport = "pass cursor,codex,grok-bot"
                 } else {
                     self.sourceReport = "fail \(text)"
@@ -343,43 +358,74 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
         let script = """
         window.__mochiClearChoices && window.__mochiClearChoices();
         window.pushTasks(\(json(tasks)), \(stateJSON));
-        var collapsed = document.querySelector('.speech.task[data-task-id="style-collapsed"]');
-        var open = document.querySelector('.speech.task[data-task-id="style-open"]');
-        var text = getComputedStyle(collapsed.querySelector('.speech-text'));
-        var title = getComputedStyle(collapsed.querySelector('.speech-title'));
-        var inner = getComputedStyle(collapsed.querySelector('.speech-inner'));
-        var openTitle = getComputedStyle(open.querySelector('.speech-title'));
-        var openInner = getComputedStyle(open.querySelector('.speech-inner'));
-        var detail = getComputedStyle(open.querySelector('.speech-detail'));
-        var prompt = getComputedStyle(open.querySelector('.speech-prompt'));
-        JSON.stringify({
-          parentOverflow: text.overflow,
-          parentEllipsis: text.textOverflow,
-          titleOverflow: title.overflow,
-          titleEllipsis: title.textOverflow,
-          titleWrap: title.whiteSpace,
-          collapsedMax: inner.maxWidth,
-          openTitleWrap: openTitle.whiteSpace,
-          openMax: openInner.maxWidth,
-          detailMax: detail.maxHeight,
-          detailOverflow: detail.overflowY,
-          promptWrap: prompt.whiteSpace
+        (function () {
+        function box(el) {
+          var rect = el.getBoundingClientRect();
+          return { w: Math.round(rect.width), h: Math.round(rect.height), left: rect.left, right: rect.right };
+        }
+        var popupEl = document.getElementById('popup');
+        var bar = popupEl.querySelector('.popup-bar');
+        var title = popupEl.querySelector('.popup-title');
+        var summary = popupEl.querySelector('.popup-summary');
+        var capsuleEl = document.querySelector('.capsule');
+        var slot = document.querySelector('.slot');
+        var right = { popup: box(popupEl), capsule: box(capsuleEl) };
+        document.body.dataset.dock = 'left';
+        window.applyScreenLayout();
+        var left = { popup: box(popupEl), capsule: box(capsuleEl) };
+        document.body.dataset.dock = 'right';
+        window.applyScreenLayout();
+        var titleStyle = getComputedStyle(title);
+        var summaryStyle = getComputedStyle(summary);
+        var face = slot.querySelector('.slot-face');
+        return JSON.stringify({
+          popupW: right.popup.w,
+          barH: box(bar).h,
+          titleEllipsis: titleStyle.textOverflow,
+          titleWrap: titleStyle.whiteSpace,
+          summaryMax: summaryStyle.maxHeight,
+          summaryOverflow: summaryStyle.overflowY,
+          capsuleW: right.capsule.w,
+          slotW: box(slot).w,
+          slotH: box(slot).h,
+          addW: box(document.querySelector('.add-btn')).w,
+          gearW: box(document.querySelector('.gear')).w,
+          menuCount: document.querySelectorAll('#source-menu button').length,
+          rightInward: right.popup.right <= right.capsule.left + 1,
+          leftInward: left.popup.left >= left.capsule.right - 1,
+          face: face ? face.className : '',
+          cat: !!slot.querySelector('img')
         });
+        })()
         """
         webView?.evaluateJavaScript(script) { [weak self] result, _ in
             DispatchQueue.main.async {
                 guard let self, !self.done else { return }
                 let text = result as? String ?? "{}"
                 let style = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] ?? [:]
-                let parentOK = (style["parentOverflow"] as? String) != "hidden" && (style["parentEllipsis"] as? String) != "ellipsis"
+                func whole(_ key: String) -> Int {
+                    if let number = style[key] as? NSNumber { return number.intValue }
+                    if let number = style[key] as? Int { return number }
+                    return -1
+                }
+                func flag(_ key: String) -> Bool {
+                    if let value = style[key] as? Bool { return value }
+                    if let number = style[key] as? NSNumber { return number.boolValue }
+                    return false
+                }
                 let titleOK = (style["titleEllipsis"] as? String) == "ellipsis" && (style["titleWrap"] as? String) == "nowrap"
-                let collapsedOK = (style["collapsedMax"] as? String) == "220px"
-                let openOK = (style["openMax"] as? String) == "240px"
-                    && (style["detailMax"] as? String) == "280px"
-                    && (style["detailOverflow"] as? String) == "auto"
-                    && (style["openTitleWrap"] as? String) == "normal"
-                    && (style["promptWrap"] as? String) == "normal"
-                if parentOK && titleOK && collapsedOK && openOK {
+                let popupOK = whole("popupW") == 280 && whole("barH") == 44
+                let summaryOK = (style["summaryMax"] as? String) == "280px" && (style["summaryOverflow"] as? String) == "auto"
+                let capsuleOK = whole("capsuleW") == 72
+                    && whole("slotW") == 56
+                    && whole("slotH") == 56
+                    && whole("addW") == 48
+                    && whole("gearW") == 28
+                    && whole("menuCount") == 3
+                let inwardOK = flag("rightInward") && flag("leftInward")
+                let face = style["face"] as? String ?? ""
+                let faceOK = face.contains("blob-") && !flag("cat")
+                if titleOK && popupOK && summaryOK && capsuleOK && inwardOK && faceOK {
                     self.styleReport = "pass"
                 } else {
                     self.styleReport = "fail \(text)"
@@ -393,8 +439,7 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
         hotOpensBefore = openEvents.count
         hotChoicesBefore = choiceEvents
         let blankScript = """
-        var node = document.querySelector('.speech.task[data-task-id="style-open"]');
-        var title = node && node.querySelector('.speech-title');
+        var title = document.querySelector('#popup .popup-title');
         if (title) title.click();
         'blank';
         """
@@ -438,7 +483,7 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
           return orig(msg);
         };
         window.pushTasks(\(json([task])), \(stateJSON));
-        var button = document.querySelector('.speech.task[data-task-id="style-open"] .speech-option');
+        var button = document.querySelector('#popup[data-task-id="style-open"] .speech-option');
         if (button) button.click();
         JSON.stringify({sent: sent, hasButton: !!button});
         """

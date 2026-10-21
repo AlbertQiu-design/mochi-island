@@ -213,6 +213,8 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
         case "setScan":
             session.setScanTranscripts(body["enabled"] as? Bool ?? false)
             reply(requestID, ["ok": true, "scanTranscripts": session.currentPrefs.scanTranscripts])
+        case "createSlot":
+            reply(requestID, session.createSlot(source: body["source"] as? String ?? ""))
         default:
             break
         }

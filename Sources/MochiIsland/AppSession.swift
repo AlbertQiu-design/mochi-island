@@ -6,15 +6,21 @@ import MochiCore
 final class AppSession {
     private let petStore: PetStore
     private let prefsStore: PrefsStore
+    private let slotDisk: DialogueSlotDisk
     private var pet: PetState
     private var prefs: IslandPrefs
+    private var slots: DialogueSlotStore
     private var tracker = TaskTransitionTracker()
+    private var knownWaitIDs: Set<String> = []
+    private var waitsPrimed = false
 
     init() {
         petStore = PetStore.live()
         prefsStore = PrefsStore.live()
+        slotDisk = DialogueSlotDisk.live()
         pet = petStore.load(migrating: Self.legacyFiles("src/pet_state.json"))
         prefs = prefsStore.load(migrating: Self.legacyFiles("island_offset.json"))
+        slots = slotDisk.load()
     }
 
     var currentPrefs: IslandPrefs { prefs }
@@ -22,6 +28,10 @@ final class AppSession {
     func replacePrefs(_ json: [String: Any]) {
         prefs = IslandPrefs.parse(json, base: prefs)
         prefsStore.save(prefs)
+        if let selected = json["selected"] as? String, slots.slots.contains(where: { $0.id == selected }) {
+            slots.selected = selected
+            slotDisk.save(slots)
+        }
     }
 
     func statePayload() -> [String: Any] {
@@ -35,7 +45,12 @@ final class AppSession {
         if pet != before {
             petStore.save(pet)
         }
-        return PetEngine.snapshot(pet, now: now)
+        absorbTasks(tasks)
+        var payload = PetEngine.snapshot(pet, now: now)
+        payload["slots"] = slots.slots.map(\.dictionary)
+        payload["selected"] = slots.selected
+        payload["dock"] = prefs.dock
+        return payload
     }
 
     func play() -> [String: Any] {
@@ -45,7 +60,22 @@ final class AppSession {
     }
 
     func tasksPayload() -> [[String: Any]] {
-        visibleTasks(now: Date().timeIntervalSince1970).map(\.dictionary)
+        let tasks = visibleTasks(now: Date().timeIntervalSince1970)
+        absorbTasks(tasks)
+        return tasks.map(\.dictionary)
+    }
+
+    func createSlot(source: String) -> [String: Any] {
+        var rng = SystemRandomNumberGenerator()
+        let (next, slot) = slots.created(source: source, now: Date().timeIntervalSince1970, rng: &rng)
+        slots = next
+        slotDisk.save(slots)
+        return [
+            "ok": true,
+            "slot": slot.dictionary,
+            "slots": slots.slots.map(\.dictionary),
+            "selected": slots.selected
+        ]
     }
 
     func linkPayload(action: String, acknowledged: Bool) -> [String: Any] {
@@ -115,6 +145,13 @@ final class AppSession {
     func setScanTranscripts(_ enabled: Bool) {
         prefs.scanTranscripts = enabled
         prefsStore.save(prefs)
+    }
+
+    private func absorbTasks(_ tasks: [CursorTask]) {
+        let next = slots.selectingNewWaits(in: tasks, known: &knownWaitIDs, primed: &waitsPrimed)
+        guard next != slots else { return }
+        slots = next
+        slotDisk.save(slots)
     }
 
     private func visibleTasks(now: Double) -> [CursorTask] {

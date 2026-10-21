@@ -1,6 +1,6 @@
 # Mochi Island
 
-A Mac notch pet. The shipping app is Swift plus the web UI in `web/`. There is no local web server.
+A Mac menu-bar pet. The shipping app is Swift plus the web UI in `web/`. There is no local web server. The main path is a sidebar capsule and an inward popup.
 
 ## Run
 
@@ -11,7 +11,7 @@ A Mac notch pet. The shipping app is Swift plus the web UI in `web/`. There is n
 ## Layout
 
 - `Sources/MochiCore/` — pet rules, save files, Cursor hook install. No AppKit.
-- `Sources/MochiIsland/` — notch window and the message bridge.
+- `Sources/MochiIsland/` — fullscreen click-through panel and the message bridge.
 - `Sources/MochiHookCLI/` — the program Cursor hooks run. If it fails, it still exits 0.
 - `web/island.html`, `web/island.css`, `web/island.js`, `web/pets/`, `web/status/` — copied into the app as `Resources/Web`.
 - `Tests/MochiCoreChecks/main.swift` — the checks.
@@ -24,14 +24,15 @@ The page talks to Swift only through `webkit.messageHandlers.island`. Each call 
 |---|---|
 | `hotRects` | click-through rectangles |
 | `glass` | glass plates behind bubbles and cards |
-| `savePrefs` | position, color, sound, look |
-| `getState` | pet snapshot |
+| `savePrefs` | dock side, color, sound, look, and the selected slot id when `selected` is sent |
+| `getState` | pet snapshot plus `slots`, `selected`, and `dock` |
 | `play` | play with the pet |
 | `getTasks` | current Cursor tasks |
 | `cursorLink` | connect or disconnect hooks. `linkAction` is `connect`, `disconnect`, or `status`. First connect needs `acknowledged: true` after the privacy line is shown |
-| `cursorChoice` | Bubble option or permission. Writes `~/.cursor/mochi-island-reply.json` and the page refreshes that bubble immediately. Does not open an agent window |
-| `openAgent` | Blank bubble click. `source` is `cursor`, `codex`, or `grok-bot`. Opens that app |
+| `cursorChoice` | Popup approval option. Writes `~/.cursor/mochi-island-reply.json` and the page updates that popup immediately. Does not open an agent window |
+| `openAgent` | Blank popup or title click. `source` is `cursor`, `codex`, or `grok-bot`. Opens that app |
 | `setScan` | optional local file notice. Default off. It records names and times, not chat text |
+| `createSlot` | `source` is `cursor`, `codex`, or `grok-bot`. Appends a dialogue slot with a random blob skin. Does not write the task file |
 
 Do not add `fetch` to a localhost URL. Do not add a new action without a row in this table.
 
@@ -67,9 +68,11 @@ Tasks in `~/.cursor/mochi-island-tasks.json` share one schema and include `sourc
 
 ## UI
 
-Collapsed: pet and English bubble. Click either to toggle the stats card. The gear opens settings. Pet and bubble offsets are independent. Position sliders do not move the cards. `placeCards()` runs on the next popup.
+Main path: a 72px capsule docked to the right (switchable to the left), 8px from the screen edge, corner radius 36. Slots are 56×56 blob skins with a 10px gap and a 2px accent ring. The bottom holds a 48px `+` and a 28px settings icon, with 12px section gaps. `+` opens Cursor, Codex, and Grok Bot. The popup is 280px wide and opens inward. Its top bar is 44px: software name at 13px medium, conversation title at 15px semibold, both single-line ellipsis. The summary scrolls to a max height of 280px. Only `.speech-option` confirms a choice. Blank popup space and the title call `openAgent`.
 
-Chinese uses PingFang SC. Task bubbles use the GIFs in `web/status/`. Looks are one Mochi set, 16 slots, 4 per row. Colors are eight swatches plus hex text. Never use `<input type="color">`.
+Dialogue slots live in `dialogue-slots.json` under Application Support. Blob skins are `blob-0` through `blob-7`. The capsule does not draw the mood cats.
+
+Chinese uses PingFang SC. Status marks use the GIFs in `web/status/`. Looks in settings are one Mochi set, 16 slots, 4 per row. Colors are eight swatches plus hex text. Never use `<input type="color">`.
 
 ## Release
 
