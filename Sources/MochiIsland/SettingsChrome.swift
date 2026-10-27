@@ -254,7 +254,7 @@ struct SettingsRoot: View {
                         .background {
                             if model.tab == item {
                                 Capsule()
-                                    .fill(.quaternary)
+                                    .fill(.tertiary)
                                     .matchedGeometryEffect(id: "settings-tab", in: tabNS)
                             }
                         }
