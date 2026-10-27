@@ -20,6 +20,8 @@ public enum AgentLaunch {
             return "codex"
         case "grok", "grok-bot", "grokbot", "grok bot":
             return "grok-bot"
+        case "mochi", "cat", "小猫":
+            return "mochi"
         default:
             return "cursor"
         }
@@ -36,6 +38,8 @@ public enum AgentLaunch {
         let fallback: String
         let missing: String
         switch key {
+        case "mochi":
+            return AgentLaunchPlan(note: "小猫 stays on this Mac.")
         case "codex":
             names = ["Codex"]
             fallback = "https://chatgpt.com/codex"

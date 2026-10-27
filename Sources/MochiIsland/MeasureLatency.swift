@@ -431,6 +431,7 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
           rightInward: right.popup.right <= right.capsule.left + 1,
           leftInward: left.popup.left >= left.capsule.right - 1,
           face: face ? face.className : '',
+          faceSrc: (slot.querySelector('img') || {}).getAttribute('src') || '',
           cat: !!slot.querySelector('img'),
           shellCapsule: shell(capsuleEl),
           shellPopup: shell(popupEl),
@@ -476,7 +477,7 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
                     && whole("faceH") == 36
                     && whole("slotGap") == 8
                     && whole("addW") == 36
-                    && whole("gearW") == 24
+                    && whole("gearW") == 36
                     && whole("menuCount") == 3
                     && flag("withinHalf")
                     && flag("centered")
@@ -491,7 +492,8 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
                     && whole("caretLeftR") == 0
                 let inwardOK = flag("rightInward") && flag("leftInward")
                 let face = style["face"] as? String ?? ""
-                let faceOK = face.contains("blob-") && !flag("cat")
+                let faceSrc = style["faceSrc"] as? String ?? ""
+                let faceOK = face.contains("face-cursor") && flag("cat") && faceSrc.contains("cursor-") && !faceSrc.contains("happy.png")
                 if titleOK && popupOK && summaryOK && capsuleOK && caretOK && inwardOK && faceOK {
                     self.styleReport = "pass"
                 } else {

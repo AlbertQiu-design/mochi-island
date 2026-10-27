@@ -239,6 +239,7 @@ func TaskReaderKeepsSource() throws {
                 "c": ["id": "c", "title": "Cursor", "status": "running", "updated": now, "source": "cursor"],
                 "x": ["id": "x", "title": "Codex", "status": "running", "updated": now, "source": "codex"],
                 "g": ["id": "g", "title": "Grok", "status": "running", "updated": now, "source": "grok-bot"],
+                "m": ["id": "m", "title": "Cat", "status": "running", "updated": now, "source": "cat"],
                 "z": ["id": "z", "title": "Other", "status": "running", "updated": now, "source": "nope"]
             ]
         ]
@@ -248,6 +249,7 @@ func TaskReaderKeepsSource() throws {
         check(byID["c"] == "cursor")
         check(byID["x"] == "codex")
         check(byID["g"] == "grok-bot")
+        check(byID["m"] == "mochi")
         check(byID["z"] == "cursor")
         check(tasks.first { $0.id == "x" }?.dictionary["source"] as? String == "codex")
     }
@@ -266,6 +268,12 @@ func AgentLaunchFindsInstalledAppsAndCodexFallback() {
             path.hasSuffix("/Grok Bot.app")
         }
         check(grok.appPath?.hasSuffix("/Grok Bot.app") == true)
+        check(AgentLaunch.normalize("cat") == "mochi")
+        check(AgentLaunch.normalize("小猫") == "mochi")
+        let cat = AgentLaunch.plan(source: "mochi") { _ in true }
+        check(cat.appPath == nil)
+        check(cat.url == nil)
+        check(cat.note?.contains("小猫") == true)
     }
 
 struct SplitMix64: RandomNumberGenerator {
@@ -292,18 +300,19 @@ func DockPrefDefaultsToRight() {
     check(junk.dock == "left")
 }
 
-func EmptySlotFileSeedsThreeDistinctBlobs() throws {
+func EmptySlotFileSeedsThreeFaces() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-slots-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let disk = DialogueSlotDisk(directory: directory)
     let store = disk.load(now: 10)
     check(store.slots.count == 3)
-    check(Set(store.slots.map(\.source)) == Set(DialogueSlotStore.seedSources))
-    let skins = Set(store.slots.map(\.skin))
-    check(skins.count == 3)
+    check(store.slots.map(\.source) == DialogueSlotStore.seedSources)
+    check(Set(store.slots.map(\.source)) == Set(["cursor", "grok-bot", "mochi"]))
+    check(store.slots.allSatisfy { $0.skin == $0.source })
     check(store.slots.allSatisfy { DialogueSlotStore.skins.contains($0.skin) })
     check(store.selected == store.slots[0].id)
     check(!store.slots[0].skin.contains("happy"))
+    check(!store.slots.contains { $0.skin.hasPrefix("blob-") })
     check(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("mochi-island-tasks.json").path))
     let again = disk.load(now: 99)
     check(again == store)
@@ -316,26 +325,24 @@ func MergeKeepsSkinAndLeavesSlotsWhenTasksLeave() {
     let stillThere = seeded.merged(with: [])
     check(stillThere.slots.contains { $0.id == keptID })
 
-    let stable = DialogueSlotStore.stableSkin(for: "abc")
-    let other = DialogueSlotStore.skins.first { $0 != stable } ?? "blob-0"
     let store = DialogueSlotStore(
         selected: "abc",
-        slots: [DialogueSlot(id: "abc", source: "cursor", title: "Keep", skin: other, created: 1)]
+        slots: [DialogueSlot(id: "abc", source: "cursor", title: "Keep", skin: "blob-3", created: 1)]
     )
     let task = CursorTask(id: "abc", title: "From bus", status: "running", source: "codex", updated: 5)
     let merged = store.merged(with: [task])
     check(merged.slots.count == 1)
-    check(merged.slots[0].skin == other)
+    check(merged.slots[0].skin == "codex")
     check(merged.slots[0].source == "codex")
     check(merged.slots[0].title == "From bus")
-    check(merged.merged(with: [task]).slots[0].skin == other)
+    check(merged.merged(with: [task]).slots[0].skin == "codex")
 
     let added = DialogueSlotStore().merged(with: [task])
-    check(added.slots[0].skin == stable)
-    check(added.slots[0].skin.hasPrefix("blob-"))
+    check(added.slots[0].skin == "codex")
+    check(added.slots[0].skin == DialogueSlotStore.face(for: "codex"))
 }
 
-func CreateSlotAppendsABlobWithoutATaskFile() {
+func CreateSlotAppendsAFaceWithoutATaskFile() {
     var rng = SplitMix64(seed: 9)
     let store = DialogueSlotStore.seed(now: 2, rng: &rng)
     var createRNG = SplitMix64(seed: 11)
@@ -343,9 +350,14 @@ func CreateSlotAppendsABlobWithoutATaskFile() {
     check(next.slots.count == store.slots.count + 1)
     check(next.selected == slot.id)
     check(slot.source == "grok-bot")
+    check(slot.skin == "grok-bot")
     check(slot.title == "New chat")
     check(DialogueSlotStore.skins.contains(slot.skin))
     check(!slot.skin.contains("happy"))
+    var catRNG = SplitMix64(seed: 12)
+    let cat = store.created(source: "小猫", now: 21, rng: &catRNG).1
+    check(cat.source == "mochi")
+    check(cat.skin == "mochi")
 }
 
 func NewWaitSelectsOnlyAfterTheFirstSnapshot() {
@@ -406,9 +418,9 @@ try ReplyWriterOnlyAllowsPermissionActions()
 try TaskReaderKeepsSource()
 AgentLaunchFindsInstalledAppsAndCodexFallback()
 DockPrefDefaultsToRight()
-try EmptySlotFileSeedsThreeDistinctBlobs()
+try EmptySlotFileSeedsThreeFaces()
 MergeKeepsSkinAndLeavesSlotsWhenTasksLeave()
-CreateSlotAppendsABlobWithoutATaskFile()
+CreateSlotAppendsAFaceWithoutATaskFile()
 NewWaitSelectsOnlyAfterTheFirstSnapshot()
 LiveHooksFixWhenAsked()
 print("MochiCore checks passed")

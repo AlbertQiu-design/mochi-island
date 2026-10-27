@@ -30,9 +30,9 @@ The page talks to Swift only through `webkit.messageHandlers.island`. Each call 
 | `getTasks` | current Cursor tasks |
 | `cursorLink` | connect or disconnect hooks. `linkAction` is `connect`, `disconnect`, or `status`. First connect needs `acknowledged: true` after the privacy line is shown |
 | `cursorChoice` | Popup approval option. Writes `~/.cursor/mochi-island-reply.json` and the page updates that popup immediately. Does not open an agent window |
-| `openAgent` | Blank popup or title click. `source` is `cursor`, `codex`, or `grok-bot`. Opens that app |
+| `openAgent` | Blank popup or title click. `source` is `cursor`, `codex`, `grok-bot`, or `mochi`. Opens that app. `mochi` (小猫) stays local and does not open a URL |
 | `setScan` | optional local file notice. Default off. It records names and times, not chat text |
-| `createSlot` | `source` is `cursor`, `codex`, or `grok-bot`. Appends a dialogue slot with a random blob skin. Does not write the task file |
+| `createSlot` | `source` is `cursor`, `grok-bot`, or `mochi`. Appends a dialogue slot whose face follows that source. Does not write the task file |
 
 Do not add `fetch` to a localhost URL. Do not add a new action without a row in this table.
 
@@ -64,13 +64,13 @@ Do not drive Cursor with AppleScript or Accessibility. Do not start agents with 
 
 Prompt and command text are not stored. Permission bubbles only say allow or deny.
 
-Tasks in `~/.cursor/mochi-island-tasks.json` share one schema and include `source`: `cursor`, `codex`, or `grok-bot`. Cursor tasks are written by `MochiHookCLI`. Codex and Grok Bot tasks are written by `Scripts/mochi-upsert-task.sh`. A blank task bubble opens that source. `Codex.app` is not required: when it is missing, Codex opens `https://chatgpt.com/codex`. Grok Bot opens `Grok Bot.app` when that app is installed.
+Tasks in `~/.cursor/mochi-island-tasks.json` share one schema and include `source`: `cursor`, `codex`, `grok-bot`, or `mochi`. Cursor tasks are written by `MochiHookCLI`. Codex and Grok Bot tasks are written by `Scripts/mochi-upsert-task.sh`. A blank task bubble opens that source. `Codex.app` is not required: when it is missing, Codex opens `https://chatgpt.com/codex`. Grok Bot opens `Grok Bot.app` when that app is installed. `mochi` is the 小猫 desk pet and stays on this Mac.
 
 ## UI
 
-Main path: a 72px capsule docked to the right (switchable to the left), 8px from the screen edge, corner radius 36. Slots are 56×56 blob skins with a 10px gap and a 2px accent ring. The bottom holds a 48px `+` and a 28px settings icon, with 12px section gaps. `+` opens Cursor, Codex, and Grok Bot. The popup is 280px wide and opens inward. Its top bar is 44px: software name at 13px medium, conversation title at 15px semibold, both single-line ellipsis. The summary scrolls to a max height of 280px. Only `.speech-option` confirms a choice. Blank popup space and the title call `openAgent`.
+Main path: a 56px black (#111) capsule docked to the right (switchable to the left), 8px from the screen edge. Slots are 36px source faces (Cursor, Grok Bot, 小猫) inside the 56px shell, with an 8px gap. The bottom holds a 36px `+` and a 36px settings icon. `+` opens Cursor, Grok Bot, and 小猫. The popup is 200px wide and opens inward. Only `.speech-option` confirms a choice. Blank popup space and the title call `openAgent`.
 
-Dialogue slots live in `dialogue-slots.json` under Application Support. Blob skins are `blob-0` through `blob-7`. The capsule does not draw the mood cats.
+Dialogue slots live in `dialogue-slots.json` under Application Support. Slot faces are bundled `web/pets/cursor-*.svg` (cursor-v2), `web/pets/grok-*.svg` (grok-v9), and `web/pets/kitten-*.svg` (kitten-v1). All three swap wake/work/wait/done from task status. The capsule does not draw the mood-cat look set.
 
 Chinese uses PingFang SC. Status marks use the GIFs in `web/status/`. Looks in settings are one Mochi set, 16 slots, 4 per row. Colors are eight swatches plus hex text. Never use `<input type="color">`.
 

@@ -26,8 +26,8 @@ final class GlassPlate {
         let effect = NSGlassEffectView(frame: .zero)
         effect.style = .regular
         effect.tintColor = nil
-        if #available(macOS 27.0, *) {
-            effect.effectIsInteractive = true
+        if effect.responds(to: Selector(("setEffectIsInteractive:"))) {
+            effect.setValue(true, forKey: "effectIsInteractive")
         }
         let label = NSTextField(wrappingLabelWithString: "")
         label.alignment = .center

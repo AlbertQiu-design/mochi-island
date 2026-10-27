@@ -14,7 +14,27 @@ const strokeInput = document.getElementById("bubble-stroke");
 const cardFillInput = document.getElementById("card-fill");
 const cardStrokeInput = document.getElementById("card-stroke");
 
-const APP_NAME = { cursor: "Cursor", codex: "Codex", "grok-bot": "Grok Bot" };
+const APP_NAME = { cursor: "Cursor", codex: "Codex", "grok-bot": "Grok Bot", mochi: "小猫" };
+const FACE_SRC = {
+  cursor: {
+    wake: "pets/cursor-wake.svg",
+    work: "pets/cursor-work.svg",
+    wait: "pets/cursor-wait.svg",
+    done: "pets/cursor-done.svg",
+  },
+  "grok-bot": {
+    wake: "pets/grok-wake.svg",
+    work: "pets/grok-work.svg",
+    wait: "pets/grok-wait.svg",
+    done: "pets/grok-done.svg",
+  },
+  mochi: {
+    wake: "pets/kitten-wake.svg",
+    work: "pets/kitten-work.svg",
+    wait: "pets/kitten-wait.svg",
+    done: "pets/kitten-done.svg",
+  },
+};
 const STATUS_MARK = {
   running: "status/spinner.gif?v=41",
   wait: "status/warning.gif?v=41",
@@ -108,19 +128,30 @@ function taskSource(task) {
   const value = String((task && task.source) || "").trim().toLowerCase();
   if (value === "codex") return "codex";
   if (value === "grok-bot" || value === "grok" || value === "grokbot" || value === "grok bot") return "grok-bot";
+  if (value === "mochi" || value === "cat" || value === "小猫") return "mochi";
   return "cursor";
 }
 
-function stableSkin(id) {
-  let hash = 0;
-  for (let i = 0; i < id.length; i += 1) {
-    hash = (hash * 33 + id.charCodeAt(i)) % 997;
-  }
-  return `blob-${((hash % 8) + 8) % 8}`;
+function faceSkin(source) {
+  if (source === "grok-bot" || source === "mochi" || source === "codex") return source;
+  return "cursor";
 }
 
-function skinClass(skin) {
-  return /^blob-[0-7]$/.test(skin) ? skin : "blob-0";
+function faceState(status) {
+  if (status === "running") return "work";
+  if (status === "wait" || status === "fail") return "wait";
+  if (status === "done") return "done";
+  return "wake";
+}
+
+function slotFaceHTML(slot) {
+  const source = faceSkin(slot.source);
+  const task = liveTask(slot.id);
+  const state = faceState(task && task.status);
+  const pack = FACE_SRC[source];
+  const src = pack ? pack[state] || pack.wake : "";
+  const img = src ? `<img src="${src}" alt="">` : "";
+  return `<span class="slot-face face-${source}" aria-hidden="true">${img}</span>`;
 }
 
 function normalizeSlot(raw) {
@@ -131,7 +162,7 @@ function normalizeSlot(raw) {
     id,
     source,
     title: String((raw && raw.title) || "").trim() || "New chat",
-    skin: /^blob-[0-7]$/.test(raw && raw.skin) ? raw.skin : stableSkin(id),
+    skin: faceSkin(source),
     created: Number(raw && raw.created) || 0,
   };
 }
@@ -139,11 +170,12 @@ function normalizeSlot(raw) {
 function ensureSlotFromTask(task) {
   const id = String((task && task.id) || "");
   if (!id || slotRecords.some((slot) => slot.id === id)) return;
+  const source = taskSource(task);
   slotRecords.push({
     id,
-    source: taskSource(task),
+    source,
     title: String(task.title || "").trim() || "New chat",
-    skin: stableSkin(id),
+    skin: faceSkin(source),
     created: Number(task.updated) || 0,
   });
 }
@@ -204,7 +236,7 @@ function renderSlots() {
     .map((slot) => {
       const selected = slot.id === selectedId ? " selected" : "";
       const label = escapeHtml(slot.title || "New chat");
-      return `<button type="button" class="slot${selected}" data-task-id="${escapeHtml(slot.id)}" data-source="${slot.source}" data-app="${escapeHtml(APP_NAME[slot.source] || "Cursor")}" aria-label="${label}"><span class="slot-face ${skinClass(slot.skin)}" aria-hidden="true"><i></i></span></button>`;
+      return `<button type="button" class="slot${selected}" data-task-id="${escapeHtml(slot.id)}" data-source="${slot.source}" data-app="${escapeHtml(APP_NAME[slot.source] || "Cursor")}" aria-label="${label}">${slotFaceHTML(slot)}</button>`;
     })
     .join("");
 }
@@ -654,6 +686,21 @@ sourceMenu.addEventListener("click", async (event) => {
   if (!button) return;
   event.stopPropagation();
   sourceMenu.hidden = true;
+  if (!window.webkit?.messageHandlers?.island) {
+    const source = taskSource({ source: button.dataset.source });
+    const slot = {
+      id: `preview-${source}-${Date.now()}`,
+      source,
+      title: "New chat",
+      skin: faceSkin(source),
+      created: Date.now(),
+    };
+    slotRecords.push(slot);
+    selectedId = slot.id;
+    popupOpen = true;
+    paint();
+    return;
+  }
   try {
     const result = await islandCall("createSlot", { source: button.dataset.source || "cursor" });
     if (result && Array.isArray(result.slots)) {
@@ -816,6 +863,18 @@ window.addEventListener("resize", () => {
   reportHotRects();
 });
 
-refresh();
-setInterval(refresh, REFRESH_MS);
+if (window.webkit?.messageHandlers?.island) {
+  refresh();
+  setInterval(refresh, REFRESH_MS);
+} else {
+  applySnapshot([], {
+    slots: [
+      { id: "seed-cursor", source: "cursor", title: "New chat", skin: "cursor", created: 1 },
+      { id: "seed-grok-bot", source: "grok-bot", title: "New chat", skin: "grok-bot", created: 1 },
+      { id: "seed-mochi", source: "mochi", title: "New chat", skin: "mochi", created: 1 },
+    ],
+    selected: "seed-cursor",
+    dock: "right",
+  });
+}
 requestAnimationFrame(reportHotRects);
