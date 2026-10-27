@@ -308,6 +308,12 @@ func EmptySlotFileSeedsThreeFaces() throws {
     check(store.slots.count == 3)
     check(store.slots.map(\.source) == DialogueSlotStore.seedSources)
     check(Set(store.slots.map(\.source)) == Set(["cursor", "grok-bot", "mochi"]))
+    check(store.slots.first { $0.source == "mochi" }?.title == "小猫")
+    check(SlotFace.pack(for: "mochi") == "kitten")
+    check(SlotFace.resourceName(source: "小猫", status: "") == "kitten-wake")
+    check(SlotFace.resourceName(source: "mochi", status: "wait") == "kitten-wait")
+    check(SlotFace.displayName(for: "mochi") == "小猫")
+    check(SlotFace.label(title: "New chat", source: "mochi") == "小猫")
     check(store.slots.allSatisfy { $0.skin == $0.source })
     check(store.slots.allSatisfy { DialogueSlotStore.skins.contains($0.skin) })
     check(store.selected == store.slots[0].id)
@@ -358,6 +364,16 @@ func CreateSlotAppendsAFaceWithoutATaskFile() {
     let cat = store.created(source: "小猫", now: 21, rng: &catRNG).1
     check(cat.source == "mochi")
     check(cat.skin == "mochi")
+}
+
+func KittenV1FaceFilesFollowSource() {
+    check(SlotFace.pack(for: "cursor") == "cursor")
+    check(SlotFace.pack(for: "grok-bot") == "grok")
+    check(SlotFace.pack(for: "小猫") == "kitten")
+    check(SlotFace.resourceName(source: "mochi", status: "running") == "kitten-work")
+    check(SlotFace.resourceName(source: "mochi", status: "done") == "kitten-done")
+    check(SlotFace.label(title: "Fix tabs", source: "cursor") == "Fix tabs")
+    check(SlotFace.displayName(for: "grok-bot") == "Grok Bot")
 }
 
 func EnsuringSeedAddsMissingKitten() {
@@ -448,6 +464,7 @@ DockPrefDefaultsToRight()
 try EmptySlotFileSeedsThreeFaces()
 MergeKeepsSkinAndLeavesSlotsWhenTasksLeave()
 CreateSlotAppendsAFaceWithoutATaskFile()
+KittenV1FaceFilesFollowSource()
 EnsuringSeedAddsMissingKitten()
 SelectingKeepsOnlyKnownIds()
 NewWaitSelectsOnlyAfterTheFirstSnapshot()

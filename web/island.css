@@ -52,6 +52,28 @@ html, body {
   color: var(--shell-text);
 }
 
+.popup-caret {
+  position: absolute;
+  top: var(--caret-y, 50%);
+  width: 0;
+  height: 0;
+  margin-top: calc(var(--caret) / -2);
+  border-style: solid;
+  pointer-events: none;
+}
+
+.popup[data-dock="right"] .popup-caret {
+  right: calc(var(--caret) * -1);
+  border-width: calc(var(--caret) / 2) 0 calc(var(--caret) / 2) var(--caret);
+  border-color: transparent transparent transparent var(--shell);
+}
+
+.popup[data-dock="left"] .popup-caret {
+  left: calc(var(--caret) * -1);
+  border-width: calc(var(--caret) / 2) var(--caret) calc(var(--caret) / 2) 0;
+  border-color: transparent var(--shell) transparent transparent;
+}
+
 .source-menu {
   z-index: 7;
   display: flex;
@@ -84,7 +106,7 @@ html, body {
   width: var(--popup-w);
   max-height: 50vh;
   z-index: 6;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
 }
@@ -161,6 +183,11 @@ html, body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.popup-body {
+  overflow: hidden;
+  border-radius: 0 0 16px 16px;
 }
 
 .popup-summary {

@@ -58,7 +58,7 @@ public struct DialogueSlotStore: Codable, Equatable {
             DialogueSlot(
                 id: "seed-\(source)",
                 source: source,
-                title: "New chat",
+                title: source == "mochi" ? SlotFace.displayName(for: source) : "New chat",
                 skin: face(for: source),
                 created: now
             )
@@ -91,7 +91,7 @@ public struct DialogueSlotStore: Codable, Equatable {
                 DialogueSlot(
                     id: "seed-\(source)",
                     source: source,
-                    title: source == "mochi" ? "小猫" : "New chat",
+                    title: source == "mochi" ? SlotFace.displayName(for: source) : "New chat",
                     skin: Self.face(for: source),
                     created: next.slots.first?.created ?? 0
                 ),

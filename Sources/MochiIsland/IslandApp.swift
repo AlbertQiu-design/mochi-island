@@ -118,6 +118,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     private var globalMonitor: Any?
     private let capsule = CapsuleChrome()
     private let settings = SettingsChrome()
+    private var openedWait = ""
 
     func start() {
         configurePanel()
@@ -290,12 +291,26 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     private func refreshCapsule() {
         let state = session.statePayload()
         let tasks = session.tasksPayload()
+        let selected = state["selected"] as? String ?? ""
+        let waiting = tasks.contains {
+            ($0["id"] as? String) == selected && ($0["status"] as? String) == "wait"
+        }
         capsule.sync(
             slots: state["slots"] as? [[String: Any]] ?? [],
-            selected: state["selected"] as? String ?? "",
+            selected: selected,
             tasks: tasks,
             dock: session.currentPrefs.dock
         )
+        if waiting, selected != openedWait {
+            openedWait = selected
+            capsule.revealSelected()
+            tellPage(
+                "window.applyCapsuleEvent && window.applyCapsuleEvent({kind:'select',id:\(Self.jsonString(selected)),open:true});"
+            )
+        }
+        if !waiting, openedWait == selected {
+            openedWait = ""
+        }
         publishCapsule()
     }
 
@@ -376,6 +391,13 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
         applyFrame()
         injectPageState()
         refreshCapsule()
+        if settings.isVisible {
+            settings.reposition(
+                capsule: capsule.panel.frame,
+                dock: session.currentPrefs.dock,
+                host: panel
+            )
+        }
     }
 
     private func applyFrame() {
@@ -403,12 +425,13 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
 
     private func syncMousePassthrough() {
         let screenMouse = NSEvent.mouseLocation
+        settings.panel.ignoresMouseEvents = !settings.isVisible
         if settings.isVisible {
-            settings.panel.ignoresMouseEvents = false
-            if settings.panel.frame.insetBy(dx: -6, dy: -6).contains(screenMouse) {
-                panel.ignoresMouseEvents = false
-                return
-            }
+            // Settings is an independent window. Leave the fullscreen host
+            // click-through so WKWebView cannot eat the tab bar clicks.
+            capsule.hideTip()
+        } else {
+            capsule.noteHover(at: screenMouse)
         }
         if capsule.panel.frame.insetBy(dx: -6, dy: -6).contains(screenMouse) {
             panel.ignoresMouseEvents = false

@@ -64,11 +64,13 @@ final class SettingsChrome: NSObject {
         panel.ignoresMouseEvents = false
         panel.becomesKeyOnlyIfNeeded = false
         panel.acceptsMouseMovedEvents = true
+        panel.isFloatingPanel = true
         panel.isRestorable = false
         panel.animationBehavior = .none
         panel.title = "Mochi Settings"
+        panel.worksWhenModal = true
 
-        let hosting = NSHostingView(rootView: SettingsRoot(model: model))
+        let hosting = HitHostingView(rootView: SettingsRoot(model: model))
         hosting.sizingOptions = []
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = NSColor.clear.cgColor
@@ -86,9 +88,10 @@ final class SettingsChrome: NSObject {
             current.removeChildWindow(panel)
         }
         self.host = host
-        panel.level = NSWindow.Level(rawValue: host.level.rawValue + 1)
+        // Independent of the click-through host so the fullscreen WebView
+        // cannot steal Dock|Looks|Colors|Sound|Links clicks.
+        panel.level = NSWindow.Level(rawValue: host.level.rawValue + 2)
         panel.collectionBehavior = host.collectionBehavior
-        host.addChildWindow(panel, ordered: .above)
         hide()
     }
 
@@ -109,7 +112,8 @@ final class SettingsChrome: NSObject {
         panel.ignoresMouseEvents = false
         panel.alphaValue = 1
         panel.orderFrontRegardless()
-        panel.makeKey()
+        panel.makeKeyAndOrderFront(nil)
+        panel.makeFirstResponder(hosting)
     }
 
     func hide() {
@@ -232,6 +236,7 @@ struct SettingsRoot: View {
                 case .links: linksPane
                 }
             }
+            .id(model.tab)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(width: SettingsChrome.width, height: SettingsChrome.height)
@@ -248,37 +253,57 @@ struct SettingsRoot: View {
             ForEach(SettingsTab.allCases, id: \.self) { item in
                 if item != SettingsTab.allCases.first {
                     Divider()
-                        .frame(height: 12)
+                        .frame(height: 11)
                 }
-                Button {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                        model.tab = item
-                    }
-                } label: {
-                    Text(item.title)
-                        .font(.system(size: 13, weight: .medium))
-                        .frame(minWidth: 36, minHeight: 28)
-                        .padding(.horizontal, 8)
-                        .background {
-                            if model.tab == item {
-                                Circle()
-                                    .frame(width: 28, height: 28)
-                                    .glassEffect(.clear, in: .circle)
-                                    .matchedGeometryEffect(id: "settings-tab", in: tabNS)
-                            }
-                        }
-                }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-                .accessibilityLabel(item.title)
-                .accessibilityAddTraits(model.tab == item ? .isSelected : [])
+                tabButton(item)
             }
         }
-        .padding(4)
+        .padding(3)
         .background {
             Color.clear
                 .glassEffect(.clear, in: .capsule)
                 .allowsHitTesting(false)
+        }
+    }
+
+    private func tabButton(_ item: SettingsTab) -> some View {
+        let selected = model.tab == item
+        return Button {
+            choose(item)
+        } label: {
+            Text(item.title)
+                .font(.system(size: 13, weight: .medium))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background {
+                    if selected {
+                        GeometryReader { geo in
+                            let side = geo.size.height
+                            GlassEffectContainer {
+                                Circle()
+                                    .fill(.clear)
+                                    .frame(width: side, height: side)
+                                    .glassEffect(.clear, in: .circle)
+                                    .matchedGeometryEffect(id: "settings-tab", in: tabNS)
+                            }
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                        }
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .allowsHitTesting(true)
+        .simultaneousGesture(TapGesture().onEnded { choose(item) })
+        .accessibilityLabel(item.title)
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private func choose(_ item: SettingsTab) {
+        guard model.tab != item else { return }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+            model.tab = item
         }
     }
 

@@ -23,6 +23,9 @@ final class CapsuleChrome: NSObject {
     let panel: CapsulePanel
     private let model: CapsuleModel
     private let hosting: NSHostingView<CapsuleRoot>
+    private let tipPanel: CapsulePanel
+    private let tipHost: NSHostingView<DockTipRoot>
+    private let tipModel: DockTipModel
     private var imageCache: [String: NSImage] = [:]
     private weak var host: NSWindow?
 
@@ -51,21 +54,49 @@ final class CapsuleChrome: NSObject {
         panel.isMovable = false
         panel.ignoresMouseEvents = false
         panel.becomesKeyOnlyIfNeeded = true
+        panel.acceptsMouseMovedEvents = true
         panel.isRestorable = false
         panel.animationBehavior = .none
         panel.title = "Mochi Capsule"
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
 
-        let hosting = NSHostingView(rootView: CapsuleRoot(model: model))
+        let hosting = HitHostingView(rootView: CapsuleRoot(model: model))
         hosting.sizingOptions = []
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = NSColor.clear.cgColor
         hosting.autoresizingMask = [NSView.AutoresizingMask.width, NSView.AutoresizingMask.height]
         panel.contentView = hosting
 
+        let tipModel = DockTipModel()
+        let tipPanel = CapsulePanel(
+            contentRect: NSRect(x: 0, y: 0, width: 80, height: 28),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        tipPanel.isOpaque = false
+        tipPanel.backgroundColor = .clear
+        tipPanel.hasShadow = false
+        tipPanel.hidesOnDeactivate = false
+        tipPanel.isMovable = false
+        tipPanel.ignoresMouseEvents = true
+        tipPanel.becomesKeyOnlyIfNeeded = true
+        tipPanel.isRestorable = false
+        tipPanel.animationBehavior = .none
+        tipPanel.title = "Mochi Tip"
+        let tipHost = NSHostingView(rootView: DockTipRoot(model: tipModel))
+        tipHost.sizingOptions = []
+        tipHost.wantsLayer = true
+        tipHost.layer?.backgroundColor = NSColor.clear.cgColor
+        tipHost.autoresizingMask = [NSView.AutoresizingMask.width, NSView.AutoresizingMask.height]
+        tipPanel.contentView = tipHost
+
         self.panel = panel
         self.model = model
         self.hosting = hosting
+        self.tipPanel = tipPanel
+        self.tipHost = tipHost
+        self.tipModel = tipModel
         super.init()
     }
 
@@ -75,7 +106,9 @@ final class CapsuleChrome: NSObject {
         }
         self.host = host
         panel.level = NSWindow.Level(rawValue: host.level.rawValue + 1)
+        tipPanel.level = NSWindow.Level(rawValue: host.level.rawValue + 2)
         panel.collectionBehavior = host.collectionBehavior
+        tipPanel.collectionBehavior = host.collectionBehavior
         host.addChildWindow(panel, ordered: .above)
         panel.orderFrontRegardless()
     }
@@ -227,33 +260,69 @@ final class CapsuleChrome: NSObject {
         return ""
     }
 
-    private func faceName(source: String, status: String) -> String {
-        let pack: String
-        switch AgentLaunch.normalize(source) {
-        case "grok-bot": pack = "grok"
-        case "mochi": pack = "kitten"
-        default: pack = "cursor"
+    func noteHover(at screenPoint: NSPoint) {
+        if model.popupOpen {
+            placeTip(nil)
+            return
         }
-        return "\(pack)-\(faceState(status))"
+        guard panel.frame.contains(screenPoint) else {
+            placeTip(nil)
+            return
+        }
+        let local = panel.convertPoint(fromScreen: screenPoint)
+        let hit = layoutRects().slots.first { $0.value.contains(local) }?.key
+        placeTip(hit)
     }
 
-    private func faceState(_ status: String) -> String {
-        switch status {
-        case "running": return "work"
-        case "wait", "fail": return "wait"
-        case "done": return "done"
-        default: return "wake"
+    func hideTip() {
+        placeTip(nil)
+    }
+
+    func revealSelected() {
+        model.popupOpen = true
+    }
+
+    private func placeTip(_ id: String?) {
+        guard let id,
+              let slot = model.slots.first(where: { $0.id == id }),
+              let rect = layoutRects().slots[id] else {
+            tipPanel.alphaValue = 0
+            tipPanel.orderOut(nil)
+            return
         }
+        tipModel.text = SlotFace.label(title: slot.title, source: slot.source)
+        tipModel.dock = model.dock
+        tipHost.rootView = DockTipRoot(model: tipModel)
+        let fitted = tipHost.fittingSize
+        let width = max(56, ceil(fitted.width))
+        let height = max(26, ceil(fitted.height))
+        let screenSlot = panel.convertToScreen(rect)
+        let gap: CGFloat = 6
+        let x = model.dock == "right"
+            ? screenSlot.minX - gap - width
+            : screenSlot.maxX + gap
+        let y = screenSlot.midY - height / 2
+        tipPanel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
+        tipHost.frame = NSRect(origin: .zero, size: NSSize(width: width, height: height))
+        tipPanel.alphaValue = 1
+        tipPanel.orderFrontRegardless()
+    }
+
+    private func faceName(source: String, status: String) -> String {
+        SlotFace.resourceName(source: source, status: status)
     }
 
     private func faceImage(source: String, status: String) -> NSImage? {
         let name = faceName(source: source, status: status)
         if let cached = imageCache[name] { return cached }
-        if let url = Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "Web/pets"),
-           let image = NSImage(contentsOf: url) {
-            image.size = NSSize(width: Self.face, height: Self.face)
-            imageCache[name] = image
-            return image
+        let folders = ["Web/pets", "pets"]
+        for folder in folders {
+            if let url = Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: folder),
+               let image = NSImage(contentsOf: url) {
+                image.size = NSSize(width: Self.face, height: Self.face)
+                imageCache[name] = image
+                return image
+            }
         }
         if AgentLaunch.normalize(source) == "codex" {
             let symbol = NSImage(systemSymbolName: "circle", accessibilityDescription: "Codex")
@@ -274,6 +343,53 @@ final class CapsulePanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
         frameRect
+    }
+}
+
+final class HitHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override var acceptsFirstResponder: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if let view = super.hitTest(point) { return view }
+        return bounds.contains(point) ? self : nil
+    }
+}
+
+@MainActor
+final class DockTipModel: ObservableObject {
+    @Published var text = ""
+    @Published var dock = "right"
+}
+
+struct DockTipRoot: View {
+    @ObservedObject var model: DockTipModel
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if model.dock == "left" {
+                caret
+            }
+            Text(model.text)
+                .font(.system(size: 13, weight: .medium))
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+            if model.dock == "right" {
+                caret
+            }
+        }
+        .background {
+            Color.clear
+                .glassEffect(.clear, in: .capsule)
+        }
+    }
+
+    private var caret: some View {
+        Image(systemName: model.dock == "right" ? "arrowtriangle.right.fill" : "arrowtriangle.left.fill")
+            .font(.system(size: 7, weight: .bold))
+            .padding(.horizontal, 1)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
@@ -386,7 +502,7 @@ struct CapsuleRoot: View {
         }
         .buttonStyle(.plain)
         .contentShape(Circle())
-        .accessibilityLabel(slot.title)
+        .accessibilityLabel(SlotFace.label(title: slot.title, source: slot.source))
     }
 }
 

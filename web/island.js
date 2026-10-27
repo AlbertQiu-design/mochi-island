@@ -339,6 +339,7 @@ function placeFloating() {
   const dock = document.body.dataset.dock === "left" ? "left" : "right";
   const capsuleBox = boxRect(chromeBox, 56, 200);
   const gap = 8;
+  popup.dataset.dock = dock;
   if (!popup.hidden) {
     const width = 200;
     const slotBox = boxRect(chromeSlots[selectedId], 56, 36);
@@ -350,6 +351,8 @@ function placeFloating() {
     left = clamp(left, 8, Math.max(8, window.innerWidth - 8 - width));
     popup.style.left = `${left}px`;
     popup.style.top = `${top}px`;
+    const caretY = clamp(anchorMid - top, 16, Math.max(16, height - 16));
+    popup.style.setProperty("--caret-y", `${caretY}px`);
   }
 }
 
