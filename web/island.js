@@ -50,6 +50,56 @@ let selectedId = "";
 let popupOpen = false;
 let waitIDs = new Set();
 const choiceOverlay = new Map();
+const doneFaceUntil = new Map();
+const doneFaceTimers = new Map();
+const CURSOR_FACE = {
+  idle: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" data-state="idle" data-char="cursor">
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g id="body" filter="url(#glow)" opacity="0.72">
+    <path fill="#E8E8E8" d="M 13.50 23.50 L 32.00 34.50 L 32.00 53.50 L 13.50 42.50 Z"/>
+    <path fill="#C4C4C4" d="M 50.50 29.96 L 50.50 42.50 L 32.00 53.50 L 32.00 34.50 L 38.66 28.64 L 43.47 25.78 Z"/>
+    <path fill="#D4D4D4" d="M 43.47 19.32 L 43.47 25.78 L 38.66 28.64 L 38.66 22.18 Z"/>
+    <path fill="#FFFFFF" d="M 32.00 12.50 L 43.47 19.32 L 38.66 22.18 L 32.00 34.50 L 13.50 23.50 Z"/>
+  </g>
+  <g id="eye-l" opacity="0.22"><rect x="24.40" y="34.90" width="2.20" height="3.60" rx="1.10" fill="#111111"/></g>
+  <g id="eye-r" opacity="0.22"><rect x="37.40" y="34.90" width="2.20" height="3.60" rx="1.10" fill="#111111"/></g>
+</svg>`,
+  running: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" data-state="running" data-char="cursor">
+  <g id="body">
+    <path fill="#E8E8E8" d="M 13.50 23.50 L 32.00 34.50 L 32.00 53.50 L 13.50 42.50 Z"/>
+    <path fill="#C4C4C4" d="M 50.50 29.96 L 50.50 42.50 L 32.00 53.50 L 32.00 34.50 L 38.66 28.64 L 43.47 25.78 Z"/>
+    <path fill="#D4D4D4" d="M 43.47 19.32 L 43.47 25.78 L 38.66 28.64 L 38.66 22.18 Z"/>
+    <path fill="#FFFFFF" d="M 32.00 12.50 L 43.47 19.32 L 38.66 22.18 L 32.00 34.50 L 13.50 23.50 Z"/>
+  </g>
+  <g id="eye-l"><rect x="24.35" y="34.30" width="2.30" height="5.80" rx="1.15" fill="#111111"/></g>
+  <g id="eye-r"><rect x="37.35" y="34.30" width="2.30" height="5.80" rx="1.15" fill="#111111"/></g>
+</svg>`,
+  wait: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" data-state="wait" data-char="cursor">
+  <g id="body">
+    <path fill="#F07171" d="M 13.50 23.50 L 32.00 34.50 L 32.00 53.50 L 13.50 42.50 Z"/>
+    <path fill="#C43C3C" d="M 50.50 29.96 L 50.50 42.50 L 32.00 53.50 L 32.00 34.50 L 38.66 28.64 L 43.47 25.78 Z"/>
+    <path fill="#E85A5A" d="M 43.47 19.32 L 43.47 25.78 L 38.66 28.64 L 38.66 22.18 Z"/>
+    <path fill="#FFE4E4" d="M 32.00 12.50 L 43.47 19.32 L 38.66 22.18 L 32.00 34.50 L 13.50 23.50 Z"/>
+  </g>
+  <g id="eye-l"><ellipse cx="25.50" cy="37.20" rx="2.70" ry="7.00" fill="#111111"/></g>
+  <g id="eye-r"><ellipse cx="38.50" cy="37.20" rx="2.70" ry="7.00" fill="#111111"/></g>
+</svg>`,
+  done: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" data-state="done" data-char="cursor">
+  <g id="body">
+    <path fill="#5ECF7A" d="M 13.50 23.50 L 32.00 34.50 L 32.00 53.50 L 13.50 42.50 Z"/>
+    <path fill="#2E9B4E" d="M 50.50 29.96 L 50.50 42.50 L 32.00 53.50 L 32.00 34.50 L 38.66 28.64 L 43.47 25.78 Z"/>
+    <path fill="#45B864" d="M 43.47 19.32 L 43.47 25.78 L 38.66 28.64 L 38.66 22.18 Z"/>
+    <path fill="#E4FFE8" d="M 32.00 12.50 L 43.47 19.32 L 38.66 22.18 L 32.00 34.50 L 13.50 23.50 Z"/>
+  </g>
+  <g id="eye-l"><path d="M21.40 37.50 Q25.50 33.10 29.60 37.50" fill="none" stroke="#111111" stroke-width="2.5" stroke-linecap="round"/></g>
+  <g id="eye-r"><path d="M34.40 37.50 Q38.50 33.10 42.60 37.50" fill="none" stroke="#111111" stroke-width="2.5" stroke-linecap="round"/></g>
+</svg>`,
+};
 const stored = {
   dx: 0,
   dy: 0,
@@ -121,6 +171,56 @@ function stableSkin(id) {
 
 function skinClass(skin) {
   return /^blob-[0-7]$/.test(skin) ? skin : "blob-0";
+}
+
+function cursorFaceSVG(state, slotId) {
+  const raw = CURSOR_FACE[state] || CURSOR_FACE.idle;
+  const uid = String(slotId).replace(/[^a-zA-Z0-9_-]/g, "") || "x";
+  return raw
+    .replace(/id="glow"/g, `id="glow-${uid}"`)
+    .replace(/url\(#glow\)/g, `url(#glow-${uid})`)
+    .replace(/<g id="body"/g, '<g id="body" class="pet-body"')
+    .replace(/<g id="eye-l"/g, '<g id="eye-l" class="pet-eye"')
+    .replace(/<g id="eye-r"/g, '<g id="eye-r" class="pet-eye"');
+}
+
+function scheduleDoneFace(id, delay) {
+  const prev = doneFaceTimers.get(id);
+  if (prev) window.clearTimeout(prev);
+  const timer = window.setTimeout(() => {
+    doneFaceTimers.delete(id);
+    paint();
+  }, Math.max(16, delay));
+  doneFaceTimers.set(id, timer);
+}
+
+function faceState(slot) {
+  if (!slot || slot.source !== "cursor") return "";
+  const task = liveTask(slot.id);
+  const status = task && task.status;
+  if (status === "running") {
+    doneFaceUntil.delete(slot.id);
+    return "running";
+  }
+  if (status === "wait") {
+    doneFaceUntil.delete(slot.id);
+    return "wait";
+  }
+  if (status === "done") {
+    const now = Date.now();
+    let until = doneFaceUntil.get(slot.id);
+    if (until == null) {
+      until = now + 600;
+      doneFaceUntil.set(slot.id, until);
+      scheduleDoneFace(slot.id, 600);
+    } else if (now < until) {
+      scheduleDoneFace(slot.id, until - now);
+    }
+    if (now < until) return "done";
+    return "idle";
+  }
+  doneFaceUntil.delete(slot.id);
+  return "idle";
 }
 
 function normalizeSlot(raw) {
@@ -199,14 +299,60 @@ window.pushTasks = (tasks, state) => {
   applySnapshot(tasks, state || {});
 };
 
+function syncSlotFace(button, slot) {
+  const state = faceState(slot);
+  let face = button.querySelector(".slot-face");
+  if (state) {
+    if (!face) {
+      face = document.createElement("span");
+      face.setAttribute("aria-hidden", "true");
+      button.appendChild(face);
+    }
+    const same = face.classList.contains("pet-cursor") && face.dataset.state === state && face.querySelector("svg");
+    face.className = "slot-face pet-cursor";
+    face.dataset.source = "cursor";
+    if (!same) {
+      face.dataset.state = state;
+      face.innerHTML = cursorFaceSVG(state, slot.id);
+    }
+    return;
+  }
+  const skin = skinClass(slot.skin);
+  if (!face) {
+    face = document.createElement("span");
+    face.setAttribute("aria-hidden", "true");
+    button.appendChild(face);
+  }
+  if (face.classList.contains("pet-cursor") || !face.querySelector("i") || !face.classList.contains(skin)) {
+    face.className = `slot-face ${skin}`;
+    delete face.dataset.state;
+    delete face.dataset.source;
+    face.innerHTML = "<i></i>";
+  }
+}
+
 function renderSlots() {
-  slotList.innerHTML = slotRecords
-    .map((slot) => {
-      const selected = slot.id === selectedId ? " selected" : "";
-      const label = escapeHtml(slot.title || "New chat");
-      return `<button type="button" class="slot${selected}" data-task-id="${escapeHtml(slot.id)}" data-source="${slot.source}" data-app="${escapeHtml(APP_NAME[slot.source] || "Cursor")}" aria-label="${label}"><span class="slot-face ${skinClass(slot.skin)}" aria-hidden="true"><i></i></span></button>`;
-    })
-    .join("");
+  const seen = new Set();
+  slotRecords.forEach((slot, index) => {
+    seen.add(slot.id);
+    let button = slotList.querySelector(`.slot[data-task-id="${CSS.escape(slot.id)}"]`);
+    if (!button) {
+      button = document.createElement("button");
+      button.type = "button";
+      button.className = "slot";
+      button.dataset.taskId = slot.id;
+    }
+    button.dataset.source = slot.source;
+    button.dataset.app = APP_NAME[slot.source] || "Cursor";
+    button.setAttribute("aria-label", slot.title || "New chat");
+    button.classList.toggle("selected", slot.id === selectedId);
+    syncSlotFace(button, slot);
+    const current = slotList.children[index];
+    if (current !== button) slotList.insertBefore(button, current || null);
+  });
+  [...slotList.children].forEach((node) => {
+    if (!seen.has(node.dataset.taskId)) node.remove();
+  });
 }
 
 function summaryHTML(slot, task) {

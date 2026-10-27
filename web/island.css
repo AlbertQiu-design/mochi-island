@@ -151,6 +151,111 @@ body[data-dock="left"] .slot.selected::after {
 .slot-face.blob-7 { background: #f4b6c2; }
 .slot-face.blob-7 i { background: rgba(36, 31, 28, 0.4); }
 
+.slot-face.pet-cursor {
+  border-radius: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+.slot-face.pet-cursor i { display: none; }
+
+.slot-face.pet-cursor svg {
+  width: 36px;
+  height: 36px;
+  display: block;
+  overflow: hidden;
+}
+
+.slot-face.pet-cursor .pet-body,
+.slot-face.pet-cursor .pet-eye,
+.slot-face.pet-cursor .pet-eye > * {
+  transform-box: fill-box;
+  transform-origin: 50% 55%;
+}
+
+.slot-face.pet-cursor[data-state="idle"] .pet-body {
+  animation: pet-breathe-idle 2.8s ease-in-out infinite;
+}
+.slot-face.pet-cursor[data-state="idle"] .pet-eye {
+  animation: pet-eye-idle 4.6s ease-in-out infinite;
+}
+.slot-face.pet-cursor[data-state="idle"] .pet-eye > * {
+  animation: pet-blink-idle 4.2s ease-in-out infinite;
+}
+
+.slot-face.pet-cursor[data-state="running"] .pet-body {
+  animation: pet-breathe-run 1.6s ease-in-out infinite;
+}
+.slot-face.pet-cursor[data-state="running"] .pet-eye {
+  animation: pet-eye-run 2.2s ease-in-out infinite;
+}
+.slot-face.pet-cursor[data-state="running"] .pet-eye > * {
+  animation: pet-blink-run 2.5s ease-in-out infinite;
+}
+
+.slot-face.pet-cursor[data-state="wait"] .pet-body {
+  animation: pet-breathe-wait 3.6s ease-in-out infinite;
+}
+.slot-face.pet-cursor[data-state="wait"] .pet-eye {
+  animation: pet-eye-wait 6s ease-in-out infinite;
+}
+.slot-face.pet-cursor[data-state="wait"] .pet-eye > * {
+  animation: pet-blink-wait 6s ease-in-out infinite;
+}
+
+.slot-face.pet-cursor[data-state="done"] .pet-body {
+  animation: pet-done-pop 0.6s ease-out 1;
+}
+.slot-face.pet-cursor[data-state="done"] .pet-eye {
+  animation: pet-done-eye 0.6s ease-out 1;
+}
+
+@keyframes pet-breathe-idle {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+@keyframes pet-breathe-run {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+@keyframes pet-breathe-wait {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+@keyframes pet-done-pop {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(1.04); }
+}
+@keyframes pet-eye-idle {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(0.6px, -0.4px); }
+}
+@keyframes pet-eye-run {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(1px, 0.4px); }
+  75% { transform: translate(-1px, -0.4px); }
+}
+@keyframes pet-eye-wait {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(0.3px, 0.2px); }
+}
+@keyframes pet-done-eye {
+  0%, 100% { transform: translate(0, 0); }
+  45% { transform: translate(0, -1px); }
+}
+@keyframes pet-blink-idle {
+  0%, 48.6%, 51.4%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.12); }
+}
+@keyframes pet-blink-run {
+  0%, 48%, 52%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.12); }
+}
+@keyframes pet-blink-wait {
+  0%, 48.7%, 51.3%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.12); }
+}
+
 .capsule-foot {
   display: flex;
   flex-direction: column;
@@ -537,4 +642,7 @@ body.settings-open .settings-card {
 
 @media (prefers-reduced-motion: reduce) {
   .popup, .settings-card, .source-menu { transition: none; }
+  .slot-face.pet-cursor .pet-body,
+  .slot-face.pet-cursor .pet-eye,
+  .slot-face.pet-cursor .pet-eye > * { animation: none !important; }
 }
