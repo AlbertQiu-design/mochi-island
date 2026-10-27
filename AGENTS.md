@@ -29,7 +29,8 @@ The page talks to Swift only through `webkit.messageHandlers.island`. Each call 
 | `play` | play with the pet |
 | `getTasks` | current Cursor tasks |
 | `cursorLink` | connect or disconnect hooks. `linkAction` is `connect`, `disconnect`, or `status`. First connect needs `acknowledged: true` after the privacy line is shown |
-| `cursorChoice` | `permission` writes `~/.cursor/mochi-island-reply.json`. Anything else opens Cursor |
+| `cursorChoice` | Bubble option or permission. Writes `~/.cursor/mochi-island-reply.json` and the page refreshes that bubble immediately. Does not open an agent window |
+| `openAgent` | Blank bubble click. `source` is `cursor`, `codex`, or `grok-bot`. Opens that app |
 | `setScan` | optional local file notice. Default off. It records names and times, not chat text |
 
 Do not add `fetch` to a localhost URL. Do not add a new action without a row in this table.
@@ -61,6 +62,8 @@ Read hook status from `~/.cursor/mochi-island-tasks.json`. Do not scan agent tra
 Do not drive Cursor with AppleScript or Accessibility. Do not start agents with the Cursor SDK.
 
 Prompt and command text are not stored. Permission bubbles only say allow or deny.
+
+Tasks in `~/.cursor/mochi-island-tasks.json` share one schema and include `source`: `cursor`, `codex`, or `grok-bot`. Cursor tasks are written by `MochiHookCLI`. Codex and Grok Bot tasks are written by `Scripts/mochi-upsert-task.sh`. A blank task bubble opens that source. `Codex.app` is not required: when it is missing, Codex opens `https://chatgpt.com/codex`. Grok Bot opens `Grok Bot.app` when that app is installed.
 
 ## UI
 

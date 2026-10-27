@@ -124,7 +124,8 @@ func HookInstallBacksUpAndMarksEntries() throws {
         try Data("#!/bin/sh\nexit 0\n".utf8).write(to: binary)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary.path)
         let hooks = directory.appendingPathComponent("hooks.json")
-        try #"{"version":1,"hooks":{"sessionStart":[{"command":"/bin/echo keep"}]}}"#.data(using: .utf8)?.write(to: hooks)
+        let raw = #"{"version":1,"hooks":{"sessionStart":[{"command":"/bin/echo keep"}],"stop":[{"command":"/tmp/vibe-island-bridge --source cursor"}]}}"#
+        try raw.data(using: .utf8)?.write(to: hooks)
         let tasks = directory.appendingPathComponent("tasks.json")
         let blocked = HookInstaller.install(hooksURL: hooks, binaryURL: binary, tasksURL: tasks, privacyAccepted: false)
         check(blocked.needsPrivacy)
@@ -136,13 +137,27 @@ func HookInstallBacksUpAndMarksEntries() throws {
         let table = json?["hooks"] as? [String: Any]
         let entries = table?["sessionStart"] as? [[String: Any]]
         check(entries?.count == 2)
-        check(entries?.last?[AppConfig.hookMarker] as? Int == AppConfig.hookVersion)
+        check(entries?.first?[AppConfig.hookMarker] as? Int == AppConfig.hookVersion)
+        check(entries?.last?["command"] as? String == "/bin/echo keep")
+        let stop = table?["stop"] as? [[String: Any]]
+        check(stop?.count == 2)
+        check(stop?.first?[AppConfig.hookMarker] as? Int == AppConfig.hookVersion)
+        check((stop?.last?["command"] as? String)?.contains("vibe-island-bridge") == true)
+        for name in ["afterAgentResponse", "afterFileEdit"] {
+            let list = table?[name] as? [[String: Any]]
+            check(list?.first?[AppConfig.hookMarker] as? Int == AppConfig.hookVersion)
+        }
+        let shell = table?["beforeShellExecution"] as? [[String: Any]]
+        check(shell?.first?["timeout"] as? Int == 300)
         let removed = HookInstaller.remove(hooksURL: hooks, binaryURL: binary, tasksURL: tasks)
         check(!removed.connected)
         let after = try JSONSerialization.jsonObject(with: Data(contentsOf: hooks)) as? [String: Any]
         let left = (after?["hooks"] as? [String: Any])?["sessionStart"] as? [[String: Any]]
         check(left?.count == 1)
         check(left?.first?["command"] as? String == "/bin/echo keep")
+        let leftStop = (after?["hooks"] as? [String: Any])?["stop"] as? [[String: Any]]
+        check(leftStop?.count == 1)
+        check((leftStop?.first?["command"] as? String)?.contains("vibe-island-bridge") == true)
     }
 
 func TaskWatchFiresWhenTheFileIsReplaced() throws {
@@ -208,6 +223,65 @@ func ReplyWriterOnlyAllowsPermissionActions() throws {
             threw = true
         }
         check(threw)
+        let choiceURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        try ReplyWriter.writeChoice(id: "t2", requestID: "r2", action: "approve", kind: "plan", to: choiceURL)
+        let choice = try JSONSerialization.jsonObject(with: Data(contentsOf: choiceURL)) as? [String: Any]
+        check(choice?["action"] as? String == "approve")
+        check(choice?["kind"] as? String == "plan")
+        check(choice?["option_id"] as? String == "approve")
+    }
+
+func TaskReaderKeepsSource() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-src-\(UUID().uuidString).json")
+        let now = Date().timeIntervalSince1970
+        let payload: [String: Any] = [
+            "tasks": [
+                "c": ["id": "c", "title": "Cursor", "status": "running", "updated": now, "source": "cursor"],
+                "x": ["id": "x", "title": "Codex", "status": "running", "updated": now, "source": "codex"],
+                "g": ["id": "g", "title": "Grok", "status": "running", "updated": now, "source": "grok-bot"],
+                "z": ["id": "z", "title": "Other", "status": "running", "updated": now, "source": "nope"]
+            ]
+        ]
+        try JSONSerialization.data(withJSONObject: payload).write(to: url)
+        let tasks = TaskReader.load(tasksURL: url, now: now)
+        let byID = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0.source) })
+        check(byID["c"] == "cursor")
+        check(byID["x"] == "codex")
+        check(byID["g"] == "grok-bot")
+        check(byID["z"] == "cursor")
+        check(tasks.first { $0.id == "x" }?.dictionary["source"] as? String == "codex")
+    }
+
+func AgentLaunchFindsInstalledAppsAndCodexFallback() {
+        let cursor = AgentLaunch.plan(source: "Cursor") { path in
+            path.hasSuffix("/Cursor.app")
+        }
+        check(cursor.appPath?.hasSuffix("/Cursor.app") == true)
+        check(cursor.url == nil)
+        let missing = AgentLaunch.plan(source: "codex") { _ in false }
+        check(missing.appPath == nil)
+        check(missing.url == "https://chatgpt.com/codex")
+        check(missing.note?.contains("Codex.app") == true)
+        let grok = AgentLaunch.plan(source: "grok bot") { path in
+            path.hasSuffix("/Grok Bot.app")
+        }
+        check(grok.appPath?.hasSuffix("/Grok Bot.app") == true)
+    }
+
+func LiveHooksFixWhenAsked() {
+        guard let binary = ProcessInfo.processInfo.environment["MOCHI_FIX_LIVE_HOOKS"], !binary.isEmpty else { return }
+        let cursor = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cursor", isDirectory: true)
+        let result = HookInstaller.install(
+            hooksURL: cursor.appendingPathComponent("hooks.json"),
+            binaryURL: URL(fileURLWithPath: binary),
+            tasksURL: cursor.appendingPathComponent("mochi-island-tasks.json"),
+            privacyAccepted: true
+        )
+        if !result.connected {
+            fputs("FAIL live hooks \(result.error ?? "")\n", stderr)
+            exit(1)
+        }
+        print("live hooks updated")
     }
 
 PlayReducesEnergy()
@@ -223,4 +297,7 @@ OnlyRunningToDoneFeeds()
 try HookInstallBacksUpAndMarksEntries()
 try TaskWatchFiresWhenTheFileIsReplaced()
 try ReplyWriterOnlyAllowsPermissionActions()
+try TaskReaderKeepsSource()
+AgentLaunchFindsInstalledAppsAndCodexFallback()
+LiveHooksFixWhenAsked()
 print("MochiCore checks passed")
