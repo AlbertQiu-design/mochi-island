@@ -29,10 +29,10 @@ const FACE_SRC = {
     done: "pets/grok-done.svg",
   },
   mochi: {
-    wake: "pets/mochi-wake.png",
-    work: "pets/mochi-wake.png",
-    wait: "pets/mochi-wake.png",
-    done: "pets/mochi-wake.png",
+    wake: "pets/kitten-wake.svg",
+    work: "pets/kitten-work.svg",
+    wait: "pets/kitten-wait.svg",
+    done: "pets/kitten-done.svg",
   },
 };
 const STATUS_MARK = {
