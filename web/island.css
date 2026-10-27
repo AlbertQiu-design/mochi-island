@@ -121,14 +121,26 @@ body[data-dock="left"] .slot.selected::after {
   border-color: transparent transparent transparent #fff;
 }
 
-.slot-face {
+.slot-face,
+.add-btn,
+.gear {
+  box-sizing: border-box;
   width: var(--face);
   height: var(--face);
+  min-width: var(--face);
+  min-height: var(--face);
+  max-width: var(--face);
+  max-height: var(--face);
+  flex: 0 0 var(--face);
+  padding: 0;
+  overflow: hidden;
+}
+
+.slot-face {
   border-radius: 50%;
   border: 0;
   display: grid;
   place-items: center;
-  overflow: hidden;
   background: transparent;
 }
 
@@ -155,38 +167,53 @@ body[data-dock="left"] .slot.selected::after {
   margin-top: var(--slot-gap);
 }
 
-.add-btn {
+.add-btn,
+.gear {
   appearance: none;
-  width: 36px;
-  height: 36px;
+  -webkit-appearance: none;
+  position: relative;
   border: 1px solid var(--shell-line);
-  border-radius: 18px;
-  padding: 0;
+  border-radius: 50%;
   background: transparent;
   color: var(--shell-text);
-  font: inherit;
-  font-size: 22px;
-  line-height: 1;
+  font-size: 0;
+  line-height: 0;
   display: grid;
   place-items: center;
   cursor: pointer;
 }
 
-.gear {
-  appearance: none;
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--shell-line);
-  border-radius: 18px;
-  background: transparent;
-  color: var(--shell-text);
-  font: inherit;
-  font-size: 22px;
-  line-height: 1;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
+.plus-glyph {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.plus-glyph::before,
+.plus-glyph::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+
+.plus-glyph::before {
+  width: 14px;
+  height: 2px;
+}
+
+.plus-glyph::after {
+  width: 2px;
+  height: 14px;
+}
+
+.gear-glyph {
+  display: block;
+  width: 16px;
+  height: 16px;
 }
 
 .source-menu,
