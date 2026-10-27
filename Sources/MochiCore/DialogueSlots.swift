@@ -28,7 +28,7 @@ public struct DialogueSlot: Codable, Equatable {
 
 public struct DialogueSlotStore: Codable, Equatable {
     public static let skins = ["cursor", "grok-bot", "mochi", "codex"]
-    public static let seedSources = ["cursor", "grok-bot", "mochi"]
+    public static let seedSources = ["cursor", "grok-bot", "mochi", "codex"]
 
     public var selected: String
     public var slots: [DialogueSlot]

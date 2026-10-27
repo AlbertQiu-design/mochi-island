@@ -1,6 +1,7 @@
 import Foundation
 
-/// Capsule face files and Dock-label copy. Kitten art is the locked kitten-v1 SVGs.
+/// Capsule face files and Dock-label copy. Kitten art is the full Designer
+/// kitten-v1 illustrations (wake/work/wait/done PNGs), not the shrinked SVGs.
 public enum SlotFace {
     public static func pack(for source: String) -> String {
         switch AgentLaunch.normalize(source) {

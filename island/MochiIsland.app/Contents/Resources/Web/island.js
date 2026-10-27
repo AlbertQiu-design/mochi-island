@@ -1,18 +1,7 @@
-const capsule = document.getElementById("capsule");
-const slotList = document.getElementById("slot-list");
-const addBtn = document.getElementById("add-btn");
-const settingsBtn = document.getElementById("settings-btn");
-const settingsCard = document.getElementById("settings-card");
-const sourceMenu = document.getElementById("source-menu");
 const popup = document.getElementById("popup");
 const popupApp = popup.querySelector(".popup-app");
 const popupTitle = popup.querySelector(".popup-title");
 const popupSummary = popup.querySelector(".popup-summary");
-const fillInput = document.getElementById("bubble-fill");
-const textColorInput = document.getElementById("bubble-text-color");
-const strokeInput = document.getElementById("bubble-stroke");
-const cardFillInput = document.getElementById("card-fill");
-const cardStrokeInput = document.getElementById("card-stroke");
 
 const APP_NAME = { cursor: "Cursor", codex: "Codex", "grok-bot": "Grok Bot", mochi: "小猫" };
 const FACE_SRC = {
@@ -29,10 +18,10 @@ const FACE_SRC = {
     done: "pets/grok-done.svg",
   },
   mochi: {
-    wake: "pets/kitten-wake.svg",
-    work: "pets/kitten-work.svg",
-    wait: "pets/kitten-wait.svg",
-    done: "pets/kitten-done.svg",
+    wake: "pets/kitten-wake.png",
+    work: "pets/kitten-work.png",
+    wait: "pets/kitten-wait.png",
+    done: "pets/kitten-done.png",
   },
 };
 const STATUS_MARK = {
@@ -69,7 +58,34 @@ let liveTasks = [];
 let selectedId = "";
 let popupOpen = false;
 let waitIDs = new Set();
+let chromeBox = { left: 0, top: 0, right: 68, bottom: 200, w: 68, h: 200, x: 0, y: 0 };
+let chromeSlots = {};
+let chromeAdd = { left: 0, top: 0, w: 40, h: 36 };
+let chromeSettings = { left: 0, top: 0, w: 40, h: 40 };
+let chromeMeta = {
+  material: "glassEffect.clear",
+  menuCount: 4,
+  capsuleW: 68,
+  slotW: 68,
+  slotH: 40,
+  faceW: 36,
+  faceH: 36,
+  slotGap: 8,
+  addW: 40,
+  gearW: 40,
+  addSymbol: "plus",
+  gearSymbol: "gearshape",
+  caret: 8,
+  selected: "",
+};
 const choiceOverlay = new Map();
+const colors = {
+  fill: "#ffffff",
+  text: "#241f1c",
+  stroke: "#2c2926",
+  card_fill: "#111111",
+  card_stroke: "#2c2926",
+};
 const stored = {
   dx: 0,
   dy: 0,
@@ -112,6 +128,27 @@ window.__mochiClearChoices = () => {
   choiceOverlay.clear();
 };
 
+window.__mochiSlots = () =>
+  slotRecords.map((slot) => ({
+    id: slot.id,
+    source: slot.source,
+    app: APP_NAME[slot.source] || "Cursor",
+    selected: slot.id === selectedId,
+    face: faceFile(slot),
+    popupApp: popupApp.textContent || "",
+  }));
+
+window.__capsuleChrome = () => ({
+  ...chromeMeta,
+  capsule: chromeBox,
+  slots: chromeSlots,
+  add: chromeAdd,
+  settings: chromeSettings,
+  dock: document.body.dataset.dock === "left" ? "left" : "right",
+  selected: selectedId,
+  popupOpen,
+});
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -144,14 +181,12 @@ function faceState(status) {
   return "wake";
 }
 
-function slotFaceHTML(slot) {
+function faceFile(slot) {
   const source = faceSkin(slot.source);
   const task = liveTask(slot.id);
   const state = faceState(task && task.status);
   const pack = FACE_SRC[source];
-  const src = pack ? pack[state] || pack.wake : "";
-  const img = src ? `<img src="${src}" alt="">` : "";
-  return `<span class="slot-face face-${source}" aria-hidden="true">${img}</span>`;
+  return pack ? pack[state] || pack.wake : "";
 }
 
 function normalizeSlot(raw) {
@@ -231,14 +266,13 @@ window.pushTasks = (tasks, state) => {
   applySnapshot(tasks, state || {});
 };
 
-function renderSlots() {
-  slotList.innerHTML = slotRecords
-    .map((slot) => {
-      const selected = slot.id === selectedId ? " selected" : "";
-      const label = escapeHtml(slot.title || "New chat");
-      return `<button type="button" class="slot${selected}" data-task-id="${escapeHtml(slot.id)}" data-source="${slot.source}" data-app="${escapeHtml(APP_NAME[slot.source] || "Cursor")}" aria-label="${label}">${slotFaceHTML(slot)}</button>`;
-    })
-    .join("");
+function boxRect(box, fallbackW, fallbackH) {
+  if (!box) return { left: 0, top: 0, right: fallbackW, bottom: fallbackH, w: fallbackW, h: fallbackH };
+  const left = Number(box.left ?? box.x) || 0;
+  const top = Number(box.top ?? box.y) || 0;
+  const width = Number(box.w) || fallbackW;
+  const height = Number(box.h) || fallbackH;
+  return { left, top, right: left + width, bottom: top + height, w: width, h: height };
 }
 
 function summaryHTML(slot, task) {
@@ -277,6 +311,10 @@ function summaryHTML(slot, task) {
 }
 
 function renderPopup() {
+  if (window.__mochiNativeCard) {
+    popup.hidden = true;
+    return;
+  }
   const slot = slotRecords.find((item) => item.id === selectedId);
   if (!slot) {
     popup.hidden = true;
@@ -296,7 +334,6 @@ function renderPopup() {
 }
 
 function paint() {
-  renderSlots();
   renderPopup();
   placeFloating();
   requestAnimationFrame(reportHotRects);
@@ -304,43 +341,22 @@ function paint() {
 
 function placeFloating() {
   const dock = document.body.dataset.dock === "left" ? "left" : "right";
-  const capsuleBox = capsule.getBoundingClientRect();
+  const capsuleBox = boxRect(chromeBox, 68, 200);
   const gap = 8;
+  popup.dataset.dock = dock;
   if (!popup.hidden) {
     const width = 200;
-    const slotEl = selectedId ? slotList.querySelector(`.slot[data-task-id="${CSS.escape(selectedId)}"]`) : null;
-    const slotBox = slotEl ? slotEl.getBoundingClientRect() : null;
+    const slotBox = boxRect(chromeSlots[selectedId], 68, 40);
     const height = popup.offsetHeight || 120;
-    const anchorMid = slotBox ? slotBox.top + slotBox.height / 2 : capsuleBox.top + capsuleBox.height / 2;
+    const anchorMid = chromeSlots[selectedId] ? slotBox.top + slotBox.h / 2 : capsuleBox.top + capsuleBox.h / 2;
     let left = dock === "right" ? capsuleBox.left - gap - width : capsuleBox.right + gap;
     let top = anchorMid - height / 2;
     top = clamp(top, 8, Math.max(8, window.innerHeight - 8 - height));
     left = clamp(left, 8, Math.max(8, window.innerWidth - 8 - width));
     popup.style.left = `${left}px`;
     popup.style.top = `${top}px`;
-  }
-  if (!sourceMenu.hidden) {
-    const width = sourceMenu.offsetWidth || 148;
-    const height = sourceMenu.offsetHeight || 120;
-    const addBox = addBtn.getBoundingClientRect();
-    let left = dock === "right" ? capsuleBox.left - gap - width : capsuleBox.right + gap;
-    let top = addBox.top - height - gap;
-    top = clamp(top, 8, Math.max(8, window.innerHeight - 8 - height));
-    left = clamp(left, 8, Math.max(8, window.innerWidth - 8 - width));
-    sourceMenu.style.left = `${left}px`;
-    sourceMenu.style.top = `${top}px`;
-  }
-  if (document.body.classList.contains("settings-open")) {
-    const width = Math.min(540, Math.max(280, window.innerWidth - 56 - 32));
-    settingsCard.style.width = `${width}px`;
-    const height = settingsCard.offsetHeight || 280;
-    const gearBox = settingsBtn.getBoundingClientRect();
-    let left = dock === "right" ? capsuleBox.left - gap - width : capsuleBox.right + gap;
-    let top = gearBox.bottom - height;
-    top = clamp(top, 8, Math.max(8, window.innerHeight - 8 - height));
-    left = clamp(left, 8, Math.max(8, window.innerWidth - 8 - width));
-    settingsCard.style.left = `${left}px`;
-    settingsCard.style.top = `${top}px`;
+    const caretY = clamp(anchorMid - top, 16, Math.max(16, height - 16));
+    popup.style.setProperty("--caret-y", `${caretY}px`);
   }
 }
 
@@ -363,10 +379,8 @@ function glassShape(el) {
 }
 
 function reportHotRects() {
-  const nodes = [capsule];
+  const nodes = [];
   if (!popup.hidden) nodes.push(popup);
-  if (!sourceMenu.hidden) nodes.push(sourceMenu);
-  if (document.body.classList.contains("settings-open")) nodes.push(settingsCard);
   const rects = nodes
     .map((el) => {
       const box = el.getBoundingClientRect();
@@ -374,31 +388,67 @@ function reportHotRects() {
     })
     .filter((rect) => rect.w > 1 && rect.h > 1);
   islandMessage({ action: "hotRects", rects: JSON.stringify(rects) });
-  const glass = [];
-  if (document.body.classList.contains("settings-open") || document.body.classList.contains("settings-closing")) {
-    const shape = glassShape(settingsCard);
-    if (shape) glass.push(shape);
-  }
-  islandMessage({ action: "glass", rects: JSON.stringify(glass) });
+  islandMessage({ action: "glass", rects: JSON.stringify([]) });
 }
 
 function setDock(side, persist) {
   const next = side === "left" ? "left" : "right";
   document.body.dataset.dock = next;
-  document.querySelectorAll("#dock-picks button").forEach((button) => {
-    button.classList.toggle("active", button.dataset.dock === next);
-  });
   placeFloating();
   if (persist) persistPrefs();
   requestAnimationFrame(reportHotRects);
 }
 
-function setSettingsOpen(open) {
-  document.body.classList.toggle("settings-open", open);
-  if (open) sourceMenu.hidden = true;
+function setSettingsOpen() {}
+
+window.applyCapsuleChrome = function applyCapsuleChrome(info) {
+  if (!info || typeof info !== "object") return;
+  if (info.dock === "left" || info.dock === "right") setDock(info.dock, false);
+  chromeBox = boxRect(info.capsule, 68, Number(info.capsule && info.capsule.h) || 200);
+  chromeSlots = info.slots && typeof info.slots === "object" ? info.slots : {};
+  chromeAdd = boxRect(info.add, 40, 36);
+  chromeSettings = boxRect(info.settings, 40, 40);
+  chromeMeta = {
+    material: info.material || chromeMeta.material,
+    menuCount: Number(info.menuCount) || 4,
+    capsuleW: Number(info.capsuleW) || 68,
+    slotW: Number(info.slotW) || 68,
+    slotH: Number(info.slotH) || 40,
+    faceW: Number(info.faceW) || 36,
+    faceH: Number(info.faceH) || 36,
+    slotGap: Number(info.slotGap) || 8,
+    addW: Number(info.addW) || 40,
+    gearW: Number(info.gearW) || 40,
+    addSymbol: info.addSymbol || "plus",
+    gearSymbol: info.gearSymbol || "gearshape",
+    caret: Number(info.caret) || 8,
+    selected: info.selected || selectedId,
+  };
+  if (typeof info.selected === "string" && info.selected) selectedId = info.selected;
   placeFloating();
   requestAnimationFrame(reportHotRects);
-}
+};
+
+window.applyCapsuleEvent = function applyCapsuleEvent(event) {
+  if (!event || typeof event !== "object") return;
+  if (event.kind === "select") {
+    selectedId = event.id || selectedId;
+    popupOpen = event.open !== false;
+    paint();
+    return;
+  }
+  if (event.kind === "settings") {
+    return;
+  }
+  if (event.kind === "created") {
+    if (Array.isArray(event.slots)) {
+      slotRecords = event.slots.map(normalizeSlot).filter(Boolean);
+    }
+    selectedId = event.selected || selectedId;
+    popupOpen = true;
+    paint();
+  }
+};
 
 function currentPrefs() {
   return {
@@ -406,11 +456,11 @@ function currentPrefs() {
     dy: stored.dy,
     bubble_dx: stored.bubble_dx,
     bubble_dy: stored.bubble_dy,
-    fill: normalizeHex(fillInput.value, "#ffffff"),
-    text: normalizeHex(textColorInput.value, "#241f1c"),
-    stroke: normalizeHex(strokeInput.value, "#2c2926"),
-    card_fill: normalizeHex(cardFillInput.value, "#111111"),
-    card_stroke: normalizeHex(cardStrokeInput.value, "#2c2926"),
+    fill: colors.fill,
+    text: colors.text,
+    stroke: colors.stroke,
+    card_fill: colors.card_fill,
+    card_stroke: colors.card_stroke,
     sound: currentSound,
     look: currentLook,
     pet_scale: stored.pet_scale,
@@ -435,24 +485,19 @@ function normalizeHex(value, fallback) {
 }
 
 function applyBubbleColors(fill, text, stroke) {
-  const nextFill = normalizeHex(fill, "#ffffff");
-  const nextText = normalizeHex(text, "#241f1c");
-  const nextStroke = normalizeHex(stroke, "#2c2926");
-  document.documentElement.style.setProperty("--bubble-fill", nextFill);
-  document.documentElement.style.setProperty("--bubble-text", nextText);
-  document.documentElement.style.setProperty("--bubble-stroke", nextStroke);
-  fillInput.value = nextFill;
-  textColorInput.value = nextText;
-  strokeInput.value = nextStroke;
+  colors.fill = normalizeHex(fill, "#ffffff");
+  colors.text = normalizeHex(text, "#241f1c");
+  colors.stroke = normalizeHex(stroke, "#2c2926");
+  document.documentElement.style.setProperty("--bubble-fill", colors.fill);
+  document.documentElement.style.setProperty("--bubble-text", colors.text);
+  document.documentElement.style.setProperty("--bubble-stroke", colors.stroke);
 }
 
 function applyCardColors(fill, stroke) {
-  const nextFill = normalizeHex(fill, "#111111");
-  const nextStroke = normalizeHex(stroke, "#2c2926");
-  document.documentElement.style.setProperty("--card-fill", nextFill);
-  document.documentElement.style.setProperty("--card-stroke", nextStroke);
-  cardFillInput.value = nextFill;
-  cardStrokeInput.value = nextStroke;
+  colors.card_fill = normalizeHex(fill, "#111111");
+  colors.card_stroke = normalizeHex(stroke, "#2c2926");
+  document.documentElement.style.setProperty("--card-fill", colors.card_fill);
+  document.documentElement.style.setProperty("--card-stroke", colors.card_stroke);
 }
 
 window.applyPrefs = function applyPrefs(prefs) {
@@ -654,67 +699,6 @@ async function refresh() {
   applySnapshot(Array.isArray(tasks) ? tasks : [], state || {});
 }
 
-fillSwatches();
-fillSoundPicks();
-fillLookPicks();
-
-slotList.addEventListener("click", (event) => {
-  const button = event.target.closest(".slot");
-  if (!button) return;
-  event.stopPropagation();
-  const id = button.dataset.taskId || "";
-  if (id === selectedId && popupOpen) popupOpen = false;
-  else {
-    selectedId = id;
-    popupOpen = true;
-  }
-  sourceMenu.hidden = true;
-  paint();
-  persistPrefs();
-});
-
-addBtn.addEventListener("click", (event) => {
-  event.stopPropagation();
-  sourceMenu.hidden = !sourceMenu.hidden;
-  if (!sourceMenu.hidden) setSettingsOpen(false);
-  placeFloating();
-  requestAnimationFrame(reportHotRects);
-});
-
-sourceMenu.addEventListener("click", async (event) => {
-  const button = event.target.closest("button[data-source]");
-  if (!button) return;
-  event.stopPropagation();
-  sourceMenu.hidden = true;
-  if (!window.webkit?.messageHandlers?.island) {
-    const source = taskSource({ source: button.dataset.source });
-    const slot = {
-      id: `preview-${source}-${Date.now()}`,
-      source,
-      title: "New chat",
-      skin: faceSkin(source),
-      created: Date.now(),
-    };
-    slotRecords.push(slot);
-    selectedId = slot.id;
-    popupOpen = true;
-    paint();
-    return;
-  }
-  try {
-    const result = await islandCall("createSlot", { source: button.dataset.source || "cursor" });
-    if (result && Array.isArray(result.slots)) {
-      slotRecords = result.slots.map(normalizeSlot).filter(Boolean);
-      selectedId = result.selected || selectedId;
-      popupOpen = true;
-      paint();
-      persistPrefs();
-    }
-  } catch (error) {
-    requestAnimationFrame(reportHotRects);
-  }
-});
-
 popup.addEventListener("click", (event) => {
   const button = event.target.closest(".speech-option");
   if (button) {
@@ -728,133 +712,10 @@ popup.addEventListener("click", (event) => {
   openAgentWindow().catch(() => {});
 });
 
-settingsBtn.addEventListener("click", (event) => {
-  event.stopPropagation();
-  setSettingsOpen(!document.body.classList.contains("settings-open"));
-});
-
-settingsCard.addEventListener("click", (event) => event.stopPropagation());
-
-document.getElementById("settings-nav").addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-pane]");
-  if (!button) return;
-  document.querySelectorAll(".settings-nav button").forEach((item) => {
-    item.classList.toggle("active", item === button);
-  });
-  document.querySelectorAll(".settings-pane").forEach((section) => {
-    section.classList.toggle("active", section.dataset.pane === button.dataset.pane);
-  });
-  placeFloating();
-  requestAnimationFrame(reportHotRects);
-});
-
-document.getElementById("dock-picks").addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-dock]");
-  if (!button) return;
-  setDock(button.dataset.dock, true);
-});
-
-document.getElementById("sound-picks").addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-sound]");
-  if (!button) return;
-  setCurrentSound(button.dataset.sound, true);
-  persistPrefs();
-});
-
-document.getElementById("look-picks").addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-look]");
-  if (!button || button.classList.contains("placeholder")) return;
-  setCurrentLook(button.dataset.look);
-  playClickSound();
-  persistPrefs();
-});
-
-const COLOR_TARGETS = {
-  fill: fillInput,
-  text: textColorInput,
-  stroke: strokeInput,
-  "card-fill": cardFillInput,
-  "card-stroke": cardStrokeInput,
-};
-document.querySelectorAll(".swatches").forEach((row) => {
-  row.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-color]");
-    const input = COLOR_TARGETS[row.dataset.target];
-    if (!button || !input) return;
-    input.value = button.dataset.color;
-    if (String(row.dataset.target).startsWith("card")) applyCardColors(cardFillInput.value, cardStrokeInput.value);
-    else applyBubbleColors(fillInput.value, textColorInput.value, strokeInput.value);
-    persistPrefs();
-  });
-});
-[fillInput, textColorInput, strokeInput].forEach((input) => {
-  input.addEventListener("change", () => {
-    applyBubbleColors(fillInput.value, textColorInput.value, strokeInput.value);
-    persistPrefs();
-  });
-});
-[cardFillInput, cardStrokeInput].forEach((input) => {
-  input.addEventListener("change", () => {
-    applyCardColors(cardFillInput.value, cardStrokeInput.value);
-    persistPrefs();
-  });
-});
-
-document.getElementById("cursor-scan").addEventListener("change", (event) => {
-  islandCall("setScan", { enabled: event.target.checked }).catch(() => {});
-});
-
-function bindFileSource(buttonId, statusId, readyLabel) {
-  const button = document.getElementById(buttonId);
-  if (!button) return;
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    button.classList.add("connected");
-    button.textContent = readyLabel;
-    const status = document.getElementById(statusId);
-    if (status) status.textContent = "Listening for tasks";
-  });
-}
-bindFileSource("codex-link-btn", "codex-link-status", "Codex ready");
-bindFileSource("grok-link-btn", "grok-link-status", "Grok Bot ready");
-
-document.getElementById("cursor-link-btn").addEventListener("click", async (event) => {
-  event.stopPropagation();
-  const action = cursorLinked ? "disconnect" : "connect";
-  try {
-    const link = await islandCall("cursorLink", {
-      linkAction: action,
-      acknowledged: cursorLinked || document.body.dataset.cursorPrivacy === "shown",
-    });
-    if (link && link.needsPrivacy) {
-      document.body.dataset.cursorPrivacy = "shown";
-      const note = document.getElementById("cursor-privacy");
-      if (note) note.classList.remove("hidden");
-      const button = document.getElementById("cursor-link-btn");
-      if (button) button.textContent = "Continue";
-      return;
-    }
-    setCursorLinkUI(link);
-    await refresh();
-  } catch (error) {
-    return;
-  }
-});
-
-document.getElementById("island").addEventListener(
-  "click",
-  (event) => {
-    if (event.target.closest(".sound-picks") || event.target.closest(".look-picks") || event.target.closest(".swatches")) return;
-    playClickSound();
-  },
-  true
-);
-
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   popupOpen = false;
   popup.hidden = true;
-  sourceMenu.hidden = true;
   setSettingsOpen(false);
 });
 
@@ -871,7 +732,8 @@ if (window.webkit?.messageHandlers?.island) {
     slots: [
       { id: "seed-cursor", source: "cursor", title: "New chat", skin: "cursor", created: 1 },
       { id: "seed-grok-bot", source: "grok-bot", title: "New chat", skin: "grok-bot", created: 1 },
-      { id: "seed-mochi", source: "mochi", title: "New chat", skin: "mochi", created: 1 },
+      { id: "seed-mochi", source: "mochi", title: "小猫", skin: "mochi", created: 1 },
+      { id: "seed-codex", source: "codex", title: "New chat", skin: "codex", created: 1 },
     ],
     selected: "seed-cursor",
     dock: "right",

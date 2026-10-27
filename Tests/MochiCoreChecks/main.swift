@@ -300,14 +300,14 @@ func DockPrefDefaultsToRight() {
     check(junk.dock == "left")
 }
 
-func EmptySlotFileSeedsThreeFaces() throws {
+func EmptySlotFileSeedsFourFaces() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-slots-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let disk = DialogueSlotDisk(directory: directory)
     let store = disk.load(now: 10)
-    check(store.slots.count == 3)
+    check(store.slots.count == 4)
     check(store.slots.map(\.source) == DialogueSlotStore.seedSources)
-    check(Set(store.slots.map(\.source)) == Set(["cursor", "grok-bot", "mochi"]))
+    check(Set(store.slots.map(\.source)) == Set(["cursor", "grok-bot", "mochi", "codex"]))
     check(store.slots.first { $0.source == "mochi" }?.title == "小猫")
     check(SlotFace.pack(for: "mochi") == "kitten")
     check(SlotFace.resourceName(source: "小猫", status: "") == "kitten-wake")
@@ -389,6 +389,7 @@ func EnsuringSeedAddsMissingKitten() {
     check(filled.slots.contains { $0.source == "mochi" && $0.id == "seed-mochi" })
     check(filled.slots.contains { $0.source == "cursor" })
     check(filled.slots.contains { $0.source == "grok-bot" })
+    check(filled.slots.contains { $0.source == "codex" && $0.id == "seed-codex" })
     check(filled.slots.first { $0.source == "mochi" }?.title == "小猫")
 }
 
@@ -461,7 +462,7 @@ try ReplyWriterOnlyAllowsPermissionActions()
 try TaskReaderKeepsSource()
 AgentLaunchFindsInstalledAppsAndCodexFallback()
 DockPrefDefaultsToRight()
-try EmptySlotFileSeedsThreeFaces()
+try EmptySlotFileSeedsFourFaces()
 MergeKeepsSkinAndLeavesSlotsWhenTasksLeave()
 CreateSlotAppendsAFaceWithoutATaskFile()
 KittenV1FaceFilesFollowSource()

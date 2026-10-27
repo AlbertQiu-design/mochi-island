@@ -4,23 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mochi Island</title>
-    <link rel="stylesheet" href="island.css?v=45" />
+    <link rel="stylesheet" href="island.css?v=49" />
   </head>
   <body data-dock="right">
     <div id="island" class="island">
-      <aside id="capsule" class="capsule">
-        <div id="slot-list" class="slot-list"></div>
-        <div class="capsule-foot">
-          <button id="add-btn" class="add-btn" type="button" aria-label="New chat">+</button>
-          <button id="settings-btn" class="gear" type="button" aria-label="Settings">⚙</button>
-        </div>
-      </aside>
-      <div id="source-menu" class="source-menu" hidden>
-        <button type="button" data-source="cursor">Cursor</button>
-        <button type="button" data-source="grok-bot">Grok Bot</button>
-        <button type="button" data-source="mochi">小猫</button>
-      </div>
       <article id="popup" class="popup" hidden>
+        <i class="popup-caret" aria-hidden="true"></i>
         <header class="popup-bar">
           <span class="popup-source" aria-hidden="true"></span>
           <div class="popup-line">
@@ -32,60 +21,7 @@
           <div class="popup-summary"></div>
         </div>
       </article>
-      <div class="settings-card" id="settings-card">
-        <nav class="settings-nav" id="settings-nav">
-          <button type="button" data-pane="dock" class="active">Dock</button>
-          <button type="button" data-pane="looks">Looks</button>
-          <button type="button" data-pane="colors">Colors</button>
-          <button type="button" data-pane="sound">Sound</button>
-          <button type="button" data-pane="cursor">Cursor</button>
-        </nav>
-        <div class="settings-body">
-          <section class="settings-pane active" data-pane="dock">
-            <p class="nudge-title">Side</p>
-            <div class="dock-picks" id="dock-picks">
-              <button type="button" data-dock="left">Left</button>
-              <button type="button" data-dock="right" class="active">Right</button>
-            </div>
-          </section>
-          <section class="settings-pane" data-pane="looks">
-            <p class="nudge-title">Choose a pet</p>
-            <div class="look-picks" id="look-picks"></div>
-          </section>
-          <section class="settings-pane" data-pane="colors">
-            <p class="nudge-title">Bubble</p>
-            <label>Fill <input id="bubble-fill" type="text" value="#ffffff" maxlength="7" spellcheck="false" /></label>
-            <div class="swatches" data-target="fill"></div>
-            <label>Text <input id="bubble-text-color" type="text" value="#241f1c" maxlength="7" spellcheck="false" /></label>
-            <div class="swatches" data-target="text"></div>
-            <label>Stroke <input id="bubble-stroke" type="text" value="#2c2926" maxlength="7" spellcheck="false" /></label>
-            <div class="swatches" data-target="stroke"></div>
-            <p class="nudge-title">Cards</p>
-            <label>Fill <input id="card-fill" type="text" value="#111111" maxlength="7" spellcheck="false" /></label>
-            <div class="swatches" data-target="card-fill"></div>
-            <label>Stroke <input id="card-stroke" type="text" value="#2c2926" maxlength="7" spellcheck="false" /></label>
-            <div class="swatches" data-target="card-stroke"></div>
-          </section>
-          <section class="settings-pane" data-pane="sound">
-            <p class="nudge-title">Click sound</p>
-            <div class="sound-picks" id="sound-picks"></div>
-          </section>
-          <section class="settings-pane" data-pane="cursor">
-            <p class="nudge-title">Cursor</p>
-            <p id="cursor-link-status" class="cursor-link-status">Not connected</p>
-            <p id="cursor-privacy" class="cursor-privacy hidden">Mochi only reads and writes its own files in ~/.cursor on this Mac. It does not upload chats. Allow and deny stay on this computer.</p>
-            <button id="cursor-link-btn" type="button">Connect Cursor</button>
-            <label class="cursor-scan"><input id="cursor-scan" type="checkbox" /> Notice recent local agent files</label>
-            <p class="nudge-title">Codex</p>
-            <p id="codex-link-status" class="cursor-link-status">Upsert into the task file</p>
-            <button id="codex-link-btn" type="button">Connect Codex</button>
-            <p class="nudge-title">Grok Bot</p>
-            <p id="grok-link-status" class="cursor-link-status">Upsert into the task file</p>
-            <button id="grok-link-btn" type="button">Connect Grok Bot</button>
-          </section>
-        </div>
-      </div>
     </div>
-    <script src="island.js?v=45"></script>
+    <script src="island.js?v=49"></script>
   </body>
 </html>

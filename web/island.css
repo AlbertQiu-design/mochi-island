@@ -13,7 +13,7 @@
   --shell-text: #f4f4f4;
   --shell-muted: rgba(255, 255, 255, 0.62);
   --shell-line: rgba(255, 255, 255, 0.18);
-  --capsule-w: 56px;
+  --capsule-w: 68px;
   --face: 36px;
   --slot-gap: 8px;
   --popup-w: 200px;
@@ -150,7 +150,7 @@ html, body {
 }
 
 .popup[data-source="mochi"] .popup-source {
-  background-image: url("pets/kitten-wake.svg");
+  background-image: url("pets/kitten-wake.png");
   background-size: contain;
   border-radius: 50%;
 }

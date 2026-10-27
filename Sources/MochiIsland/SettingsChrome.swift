@@ -1,5 +1,6 @@
 import AppKit
 import MochiCore
+import ServiceManagement
 import SwiftUI
 
 enum SettingsTab: Int, Hashable, CaseIterable {
@@ -22,8 +23,8 @@ enum SettingsTab: Int, Hashable, CaseIterable {
 
 @MainActor
 final class SettingsChrome: NSObject {
-    static let width: CGFloat = 400
-    static let height: CGFloat = 460
+    static let width: CGFloat = 420
+    static let height: CGFloat = 540
     static let gap: CGFloat = 8
     static let palette = [
         "#ffffff", "#fff6e8", "#241f1c", "#e97868",
@@ -158,6 +159,9 @@ final class SettingsModel: ObservableObject {
     @Published var codexStatus = "Upsert into the task file"
     @Published var grokStatus = "Upsert into the task file"
     @Published var lookImage: NSImage?
+    @Published var petScale = 1.0
+    @Published var bubbleScale = 1.0
+    @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var onPrefs: (([String: Any]) -> Void)?
     var onLink: ((String, Bool) -> [String: Any])?
@@ -172,6 +176,9 @@ final class SettingsModel: ObservableObject {
         stroke = prefs.stroke
         cardFill = prefs.cardFill
         cardStroke = prefs.cardStroke
+        petScale = prefs.petScale
+        bubbleScale = prefs.bubbleScale
+        launchAtLogin = SMAppService.mainApp.status == .enabled
         scanTranscripts = prefs.scanTranscripts
         cursorConnected = link["connected"] as? Bool ?? false
         needsPrivacy = link["needsPrivacy"] as? Bool ?? false
@@ -197,8 +204,23 @@ final class SettingsModel: ObservableObject {
             "text": text,
             "stroke": stroke,
             "card_fill": cardFill,
-            "card_stroke": cardStroke
+            "card_stroke": cardStroke,
+            "pet_scale": petScale,
+            "bubble_scale": bubbleScale
         ])
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+        } catch {
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+        }
     }
 
     func connectCursor() {
@@ -309,50 +331,84 @@ struct SettingsRoot: View {
 
     private var dockPane: some View {
         Form {
-            Picker("Side", selection: $model.dock) {
-                Text("Left").tag("left")
-                Text("Right").tag("right")
+            Section("Sidebar") {
+                Picker("Side", selection: $model.dock) {
+                    Text("Left").tag("left")
+                    Text("Right").tag("right")
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: model.dock) { _, _ in model.persist() }
+                Toggle("Open at login", isOn: $model.launchAtLogin)
+                    .onChange(of: model.launchAtLogin) { _, enabled in
+                        model.setLaunchAtLogin(enabled)
+                    }
+                LabeledContent("Agents") {
+                    Text("Four to start, then grows")
+                        .foregroundStyle(.secondary)
+                }
+                LabeledContent("Height") {
+                    Text("Fits the list, up to 570 pt")
+                        .foregroundStyle(.secondary)
+                }
             }
-            .pickerStyle(.segmented)
-            .onChange(of: model.dock) { _, _ in model.persist() }
+            Section("About") {
+                LabeledContent("Mochi Island", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
+                LabeledContent("Build", value: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "2")
+                Text("A Mac sidebar pet. Official Liquid Glass only.")
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
-        .padding()
+        .scrollContentBackground(.hidden)
     }
 
     private var looksPane: some View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
-        return VStack(alignment: .leading, spacing: 12) {
-            Text("Choose a pet")
-            LazyVGrid(columns: columns, spacing: 8) {
-                Button {
-                    model.look = "mochi"
-                    model.persist()
-                } label: {
-                    if let image = model.lookImage {
-                        Image(nsImage: image)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 48, height: 48)
-                    } else {
-                        Image(systemName: "pawprint.fill")
-                            .frame(width: 48, height: 48)
-                    }
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Mochi")
-                ForEach(0..<15, id: \.self) { _ in
-                    Button(action: {}) {
-                        Image(systemName: "questionmark")
-                            .frame(width: 48, height: 48)
+        return Form {
+            Section("Choose a pet") {
+                LazyVGrid(columns: columns, spacing: 8) {
+                    Button {
+                        model.look = "mochi"
+                        model.persist()
+                    } label: {
+                        if let image = model.lookImage {
+                            Image(nsImage: image)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 48, height: 48)
+                        } else {
+                            Image(systemName: "pawprint.fill")
+                                .frame(width: 48, height: 48)
+                        }
                     }
                     .buttonStyle(.borderless)
-                    .disabled(true)
-                    .accessibilityLabel("Coming soon")
+                    .accessibilityLabel("Mochi")
+                    ForEach(0..<15, id: \.self) { _ in
+                        Button(action: {}) {
+                            Image(systemName: "questionmark")
+                                .frame(width: 48, height: 48)
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(true)
+                        .accessibilityLabel("Coming soon")
+                    }
                 }
+                .padding(.vertical, 4)
+            }
+            Section("Size") {
+                Slider(value: $model.petScale, in: 0.5...2, step: 0.1) {
+                    Text("Pet size")
+                } minimumValueLabel: {
+                    Text("S")
+                } maximumValueLabel: {
+                    Text("L")
+                }
+                .onChange(of: model.petScale) { _, _ in model.persist() }
+                LabeledContent("Scale", value: String(format: "%.1f×", model.petScale))
             }
         }
-        .padding()
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
     private var colorsPane: some View {
@@ -366,30 +422,47 @@ struct SettingsRoot: View {
                 hexRow("Fill", text: $model.cardFill) { model.cardFill = $0 }
                 hexRow("Stroke", text: $model.cardStroke) { model.cardStroke = $0 }
             }
+            Section("Size") {
+                Slider(value: $model.bubbleScale, in: 0.5...2, step: 0.1) {
+                    Text("Bubble size")
+                } minimumValueLabel: {
+                    Text("S")
+                } maximumValueLabel: {
+                    Text("L")
+                }
+                .onChange(of: model.bubbleScale) { _, _ in model.persist() }
+                LabeledContent("Scale", value: String(format: "%.1f×", model.bubbleScale))
+            }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
     private var soundPane: some View {
         Form {
-            Picker("Click sound", selection: $model.sound) {
-                ForEach(SettingsChrome.sounds, id: \.self) { id in
-                    Text(id.capitalized).tag(id)
+            Section("Click sound") {
+                Picker("Sound", selection: $model.sound) {
+                    ForEach(SettingsChrome.sounds, id: \.self) { id in
+                        Text(id.capitalized).tag(id)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .onChange(of: model.sound) { _, _ in model.persist() }
+                Text("Plays when you click the pet or a slot.")
+                    .foregroundStyle(.secondary)
             }
-            .pickerStyle(.segmented)
-            .onChange(of: model.sound) { _, _ in model.persist() }
         }
         .formStyle(.grouped)
-        .padding()
+        .scrollContentBackground(.hidden)
     }
 
     private var linksPane: some View {
         Form {
             Section("Cursor") {
-                Text(model.cursorStatus)
+                LabeledContent("Status", value: model.cursorStatus)
                 if model.needsPrivacy {
                     Text("Mochi only reads and writes its own files in ~/.cursor on this Mac. It does not upload chats. Allow and deny stay on this computer.")
+                        .foregroundStyle(.secondary)
                 }
                 Button(model.cursorButton) { model.connectCursor() }
                 Toggle("Notice recent local agent files", isOn: $model.scanTranscripts)
@@ -398,19 +471,29 @@ struct SettingsRoot: View {
                     }
             }
             Section("Codex") {
-                Text(model.codexStatus)
+                LabeledContent("Status", value: model.codexStatus)
                 Button("Connect Codex") {
                     model.codexStatus = "Listening for tasks"
                 }
+                Text("Tasks arrive through the shared task file.")
+                    .foregroundStyle(.secondary)
             }
             Section("Grok Bot") {
-                Text(model.grokStatus)
+                LabeledContent("Status", value: model.grokStatus)
                 Button("Connect Grok Bot") {
                     model.grokStatus = "Listening for tasks"
                 }
+                Text("Tasks arrive through the shared task file.")
+                    .foregroundStyle(.secondary)
+            }
+            Section("小猫") {
+                LabeledContent("Status", value: "Local desk pet")
+                Text("小猫 stays on this Mac and does not open another app.")
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
     private func hexRow(_ title: String, text: Binding<String>, set: @escaping (String) -> Void) -> some View {

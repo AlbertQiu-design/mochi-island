@@ -249,6 +249,13 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
         capsule.onSettings = { [weak self] in
             self?.toggleSettings()
         }
+        capsule.onChoice = { [weak self] body in
+            guard let self else { return [:] }
+            return self.session.choicePayload(body)
+        }
+        capsule.onOpenAgent = { [weak self] source, taskID in
+            _ = self?.session.openAgent(source: source, taskID: taskID)
+        }
         refreshCapsule()
     }
 
@@ -304,9 +311,6 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
         if waiting, selected != openedWait {
             openedWait = selected
             capsule.revealSelected()
-            tellPage(
-                "window.applyCapsuleEvent && window.applyCapsuleEvent({kind:'select',id:\(Self.jsonString(selected)),open:true});"
-            )
         }
         if !waiting, openedWait == selected {
             openedWait = ""
@@ -366,7 +370,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
         let layout = Self.screenLayoutJSON()
         let payload = Self.jsonString(session.currentPrefs.dictionary)
         webView.evaluateJavaScript(
-            "window.applyScreenLayout && window.applyScreenLayout(\(layout)); window.applyPrefs && window.applyPrefs(\(payload));",
+            "window.__mochiNativeCard = true; window.applyScreenLayout && window.applyScreenLayout(\(layout)); window.applyPrefs && window.applyPrefs(\(payload));",
             completionHandler: nil
         )
         refreshCapsule()
@@ -430,10 +434,15 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
             // Settings is an independent window. Leave the fullscreen host
             // click-through so WKWebView cannot eat the tab bar clicks.
             capsule.hideTip()
+            capsule.hideCard()
         } else {
             capsule.noteHover(at: screenMouse)
         }
         if capsule.panel.frame.insetBy(dx: -6, dy: -6).contains(screenMouse) {
+            panel.ignoresMouseEvents = false
+            return
+        }
+        if let bubble = capsule.interactiveBubbleFrame, bubble.insetBy(dx: -6, dy: -6).contains(screenMouse) {
             panel.ignoresMouseEvents = false
             return
         }

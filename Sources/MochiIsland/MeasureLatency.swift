@@ -471,15 +471,15 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
                     && whole("sourceW") == 16
                     && whole("sourceH") == 16
                 let summaryOK = flag("summaryWithin") && (style["summaryOverflow"] as? String) == "auto"
-                let capsuleOK = nativeWhole("capsuleW") == 56
-                    && nativeWhole("slotW") == 56
-                    && nativeWhole("slotH") == 36
+                let capsuleOK = nativeWhole("capsuleW") == 68
+                    && nativeWhole("slotW") == 68
+                    && nativeWhole("slotH") == 40
                     && nativeWhole("faceW") == 36
                     && nativeWhole("faceH") == 36
                     && nativeWhole("slotGap") == 8
-                    && nativeWhole("addW") == 36
-                    && nativeWhole("gearW") == 36
-                    && nativeWhole("menuCount") == 3
+                    && nativeWhole("addW") == 40
+                    && nativeWhole("gearW") == 40
+                    && nativeWhole("menuCount") == 4
                     && (native["material"] as? String) == CapsuleChrome.materialAPI
                     && (native["addSymbol"] as? String) == CapsuleChrome.addSymbol
                     && (native["gearSymbol"] as? String) == CapsuleChrome.settingsSymbol

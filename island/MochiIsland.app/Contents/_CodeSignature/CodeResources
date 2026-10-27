@@ -10,23 +10,55 @@
 		</data>
 		<key>Resources/Web/island.css</key>
 		<data>
-		1/2VMS1x90KUMq/Mnqc4K4kE7s8=
+		tepd57NXPybEqB424iDGK3JNJ/w=
 		</data>
 		<key>Resources/Web/island.html</key>
 		<data>
-		dC1BFbPq0O0MpmlyrbkLX05YoRA=
+		3cvZ8+YSBpq07qQlNl4voUEZ1Vc=
 		</data>
 		<key>Resources/Web/island.js</key>
 		<data>
-		D4eXxrNfbMwqIQuc3czk18rar3c=
+		dNGf+MKmQ/xKwLbazflGa0Ah8hM=
 		</data>
 		<key>Resources/Web/pets/angry.png</key>
 		<data>
 		JhLXBe552OPJ9gPsFRCEZuYro6E=
 		</data>
+		<key>Resources/Web/pets/cursor-done.svg</key>
+		<data>
+		JgkJADMbI3JL9SMV7EHRmrla7rQ=
+		</data>
+		<key>Resources/Web/pets/cursor-wait.svg</key>
+		<data>
+		zTd+T9KVl7O0FrevENMeN6hDBUA=
+		</data>
+		<key>Resources/Web/pets/cursor-wake.svg</key>
+		<data>
+		KSCGbTn2xkkJyWUbCBGKXBuI0eQ=
+		</data>
+		<key>Resources/Web/pets/cursor-work.svg</key>
+		<data>
+		ORKmO0AR/5/EKrVxgg3kQaQZn9I=
+		</data>
 		<key>Resources/Web/pets/dead.png</key>
 		<data>
 		RPinXXbI27xBUca16vfuvfv3b40=
+		</data>
+		<key>Resources/Web/pets/grok-done.svg</key>
+		<data>
+		PxVf/mKo6MzxK36nHALAFrmRbQA=
+		</data>
+		<key>Resources/Web/pets/grok-wait.svg</key>
+		<data>
+		LR50nkyOsobXmoFV1FIlaGwv3B0=
+		</data>
+		<key>Resources/Web/pets/grok-wake.svg</key>
+		<data>
+		IZIjU3P8VZYYlYqeRCgcu3TPbW8=
+		</data>
+		<key>Resources/Web/pets/grok-work.svg</key>
+		<data>
+		BS2Sz/fdjQhOp2luQ17SjzhBvCM=
 		</data>
 		<key>Resources/Web/pets/happy.png</key>
 		<data>
@@ -35,6 +67,22 @@
 		<key>Resources/Web/pets/hungry.png</key>
 		<data>
 		qz7OO5Z96UjgoNd5aE2S6NPt11g=
+		</data>
+		<key>Resources/Web/pets/kitten-done.png</key>
+		<data>
+		A431QDwX4gLfYVdz17BrAbdOXYk=
+		</data>
+		<key>Resources/Web/pets/kitten-wait.png</key>
+		<data>
+		qz7OO5Z96UjgoNd5aE2S6NPt11g=
+		</data>
+		<key>Resources/Web/pets/kitten-wake.png</key>
+		<data>
+		A431QDwX4gLfYVdz17BrAbdOXYk=
+		</data>
+		<key>Resources/Web/pets/kitten-work.png</key>
+		<data>
+		I7fkt8TEXWOYBebQWZLRrhjEV6M=
 		</data>
 		<key>Resources/Web/pets/playful.png</key>
 		<data>
@@ -67,10 +115,10 @@
 		<dict>
 			<key>cdhash</key>
 			<data>
-			5sk+VdWMBsS7zv3noH6T/Sv9BGw=
+			jCo4QEN/4EcVk/izdarlvRNcx38=
 			</data>
 			<key>requirement</key>
-			<string>cdhash H"e6c93e55d58c06c4bbcefde7a07e93fd2bfd046c"</string>
+			<string>cdhash H"8c2a3840437fe0471593f8b375aae5bd135cc77f" or cdhash H"f6778cc2674e15cca90c8a061559abe21c24294c"</string>
 		</dict>
 		<key>Resources/AppIcon.icns</key>
 		<dict>
@@ -83,21 +131,21 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			q3B7S8PskT5A9lcmQeaeuSqn7O05W32LTLChDxHB8RY=
+			JcRvUyoLy67ehJKa5imFKGW3tbtyvckbtjqTN0B+BQ0=
 			</data>
 		</dict>
 		<key>Resources/Web/island.html</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			GQnhHZZfa4QVK+7BhsNkDpPhehUtF+ZfiQyW/YRNhhg=
+			LTdp1J/f9C90yrZyR08enWegAIZeEbWLGpU00zpmchw=
 			</data>
 		</dict>
 		<key>Resources/Web/island.js</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			Rb7wacUmHBORVgwg2qDddf1oxrStUyhcCcDtcyxv0GE=
+			yGpX1z9aIGCclgnzhe1UCrBaqMtAGEiKbSti3hVy0Hk=
 			</data>
 		</dict>
 		<key>Resources/Web/pets/angry.png</key>
@@ -107,11 +155,67 @@
 			5fBm+gA3O6c5tLfjyRKh9z5y3iGvTZsea+5jtnHUErE=
 			</data>
 		</dict>
+		<key>Resources/Web/pets/cursor-done.svg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			lMZq7vtDGU3hvb5zxE8bMSB2F30d2+zwYIq7a6Z6oDo=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/cursor-wait.svg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			/K4xOWja4FDsqrRu1LjmSU5KS++IoG5+k5yAIsu1rk8=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/cursor-wake.svg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			CyK9Wuh/AuK5a7VsIWImpxaOUGJChi5HysdtnnNIPdM=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/cursor-work.svg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			jxs11wE3K0yccVeMYdRxlxfhleH7gcWxddCno/z0aW4=
+			</data>
+		</dict>
 		<key>Resources/Web/pets/dead.png</key>
 		<dict>
 			<key>hash2</key>
 			<data>
 			2P2/f8Kr5n1byQ/rIri1/Q8OytnNFcIiUXv2VQ4B4MM=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/grok-done.svg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			jp1esA2xFxdNhZW0tIwGJo1gyxUe+rGIfiYz63gtoX4=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/grok-wait.svg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			mx0LZnIoTiVUbpX/Y/4guruvvBMsEJ3CR6Ki1Qp/SSY=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/grok-wake.svg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			RE3KUxwVn9hquW1jf+teRkjNDETwD0O/mcMvgzQ2Sic=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/grok-work.svg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			k+GmrQ/vci0rfttBX6o7bUG7ecCzSokbhuNmW6MSceY=
 			</data>
 		</dict>
 		<key>Resources/Web/pets/happy.png</key>
@@ -126,6 +230,34 @@
 			<key>hash2</key>
 			<data>
 			Gf+UOWYgRBdNv6Qaj5hxoJIgHXLAixoUIEXHPvpCIxI=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/kitten-done.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			oxmKa71IHNjSlBcS3/ruLUQiEc1gcfUPI89mas9OL9g=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/kitten-wait.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			Gf+UOWYgRBdNv6Qaj5hxoJIgHXLAixoUIEXHPvpCIxI=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/kitten-wake.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			oxmKa71IHNjSlBcS3/ruLUQiEc1gcfUPI89mas9OL9g=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/kitten-work.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			hAmxDi2NvSCrDDKpZdlUDNB/wtdi8cB6WmS2iDkUQg0=
 			</data>
 		</dict>
 		<key>Resources/Web/pets/playful.png</key>

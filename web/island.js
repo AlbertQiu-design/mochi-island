@@ -18,10 +18,10 @@ const FACE_SRC = {
     done: "pets/grok-done.svg",
   },
   mochi: {
-    wake: "pets/kitten-wake.svg",
-    work: "pets/kitten-work.svg",
-    wait: "pets/kitten-wait.svg",
-    done: "pets/kitten-done.svg",
+    wake: "pets/kitten-wake.png",
+    work: "pets/kitten-work.png",
+    wait: "pets/kitten-wait.png",
+    done: "pets/kitten-done.png",
   },
 };
 const STATUS_MARK = {
@@ -58,21 +58,21 @@ let liveTasks = [];
 let selectedId = "";
 let popupOpen = false;
 let waitIDs = new Set();
-let chromeBox = { left: 0, top: 0, right: 56, bottom: 200, w: 56, h: 200, x: 0, y: 0 };
+let chromeBox = { left: 0, top: 0, right: 68, bottom: 200, w: 68, h: 200, x: 0, y: 0 };
 let chromeSlots = {};
-let chromeAdd = { left: 0, top: 0, w: 36, h: 36 };
-let chromeSettings = { left: 0, top: 0, w: 36, h: 36 };
+let chromeAdd = { left: 0, top: 0, w: 40, h: 36 };
+let chromeSettings = { left: 0, top: 0, w: 40, h: 40 };
 let chromeMeta = {
   material: "glassEffect.clear",
-  menuCount: 3,
-  capsuleW: 56,
-  slotW: 56,
-  slotH: 36,
+  menuCount: 4,
+  capsuleW: 68,
+  slotW: 68,
+  slotH: 40,
   faceW: 36,
   faceH: 36,
   slotGap: 8,
-  addW: 36,
-  gearW: 36,
+  addW: 40,
+  gearW: 40,
   addSymbol: "plus",
   gearSymbol: "gearshape",
   caret: 8,
@@ -311,6 +311,10 @@ function summaryHTML(slot, task) {
 }
 
 function renderPopup() {
+  if (window.__mochiNativeCard) {
+    popup.hidden = true;
+    return;
+  }
   const slot = slotRecords.find((item) => item.id === selectedId);
   if (!slot) {
     popup.hidden = true;
@@ -337,12 +341,12 @@ function paint() {
 
 function placeFloating() {
   const dock = document.body.dataset.dock === "left" ? "left" : "right";
-  const capsuleBox = boxRect(chromeBox, 56, 200);
+  const capsuleBox = boxRect(chromeBox, 68, 200);
   const gap = 8;
   popup.dataset.dock = dock;
   if (!popup.hidden) {
     const width = 200;
-    const slotBox = boxRect(chromeSlots[selectedId], 56, 36);
+    const slotBox = boxRect(chromeSlots[selectedId], 68, 40);
     const height = popup.offsetHeight || 120;
     const anchorMid = chromeSlots[selectedId] ? slotBox.top + slotBox.h / 2 : capsuleBox.top + capsuleBox.h / 2;
     let left = dock === "right" ? capsuleBox.left - gap - width : capsuleBox.right + gap;
@@ -400,21 +404,21 @@ function setSettingsOpen() {}
 window.applyCapsuleChrome = function applyCapsuleChrome(info) {
   if (!info || typeof info !== "object") return;
   if (info.dock === "left" || info.dock === "right") setDock(info.dock, false);
-  chromeBox = boxRect(info.capsule, 56, Number(info.capsule && info.capsule.h) || 200);
+  chromeBox = boxRect(info.capsule, 68, Number(info.capsule && info.capsule.h) || 200);
   chromeSlots = info.slots && typeof info.slots === "object" ? info.slots : {};
-  chromeAdd = boxRect(info.add, 36, 36);
-  chromeSettings = boxRect(info.settings, 36, 36);
+  chromeAdd = boxRect(info.add, 40, 36);
+  chromeSettings = boxRect(info.settings, 40, 40);
   chromeMeta = {
     material: info.material || chromeMeta.material,
-    menuCount: Number(info.menuCount) || 3,
-    capsuleW: Number(info.capsuleW) || 56,
-    slotW: Number(info.slotW) || 56,
-    slotH: Number(info.slotH) || 36,
+    menuCount: Number(info.menuCount) || 4,
+    capsuleW: Number(info.capsuleW) || 68,
+    slotW: Number(info.slotW) || 68,
+    slotH: Number(info.slotH) || 40,
     faceW: Number(info.faceW) || 36,
     faceH: Number(info.faceH) || 36,
     slotGap: Number(info.slotGap) || 8,
-    addW: Number(info.addW) || 36,
-    gearW: Number(info.gearW) || 36,
+    addW: Number(info.addW) || 40,
+    gearW: Number(info.gearW) || 40,
     addSymbol: info.addSymbol || "plus",
     gearSymbol: info.gearSymbol || "gearshape",
     caret: Number(info.caret) || 8,
@@ -728,7 +732,8 @@ if (window.webkit?.messageHandlers?.island) {
     slots: [
       { id: "seed-cursor", source: "cursor", title: "New chat", skin: "cursor", created: 1 },
       { id: "seed-grok-bot", source: "grok-bot", title: "New chat", skin: "grok-bot", created: 1 },
-      { id: "seed-mochi", source: "mochi", title: "New chat", skin: "mochi", created: 1 },
+      { id: "seed-mochi", source: "mochi", title: "小猫", skin: "mochi", created: 1 },
+      { id: "seed-codex", source: "codex", title: "New chat", skin: "codex", created: 1 },
     ],
     selected: "seed-cursor",
     dock: "right",
