@@ -360,6 +360,22 @@ func CreateSlotAppendsAFaceWithoutATaskFile() {
     check(cat.skin == "mochi")
 }
 
+func EnsuringSeedAddsMissingKitten() {
+    let store = DialogueSlotStore(
+        selected: "seed-cursor",
+        slots: [
+            DialogueSlot(id: "seed-cursor", source: "cursor", title: "Cursor", skin: "cursor", created: 1),
+            DialogueSlot(id: "seed-grok-bot", source: "grok-bot", title: "Grok", skin: "grok-bot", created: 1)
+        ]
+    )
+    check(!store.slots.contains { $0.source == "mochi" })
+    let filled = store.ensuringSeedSources()
+    check(filled.slots.contains { $0.source == "mochi" && $0.id == "seed-mochi" })
+    check(filled.slots.contains { $0.source == "cursor" })
+    check(filled.slots.contains { $0.source == "grok-bot" })
+    check(filled.slots.first { $0.source == "mochi" }?.title == "小猫")
+}
+
 func SelectingKeepsOnlyKnownIds() {
     var rng = SplitMix64(seed: 5)
     let store = DialogueSlotStore.seed(now: 1, rng: &rng)
@@ -432,6 +448,7 @@ DockPrefDefaultsToRight()
 try EmptySlotFileSeedsThreeFaces()
 MergeKeepsSkinAndLeavesSlotsWhenTasksLeave()
 CreateSlotAppendsAFaceWithoutATaskFile()
+EnsuringSeedAddsMissingKitten()
 SelectingKeepsOnlyKnownIds()
 NewWaitSelectsOnlyAfterTheFirstSnapshot()
 LiveHooksFixWhenAsked()

@@ -83,6 +83,27 @@ public struct DialogueSlotStore: Codable, Equatable {
         return next
     }
 
+    public func ensuringSeedSources() -> DialogueSlotStore {
+        var next = normalized()
+        for (index, source) in Self.seedSources.enumerated() {
+            guard !next.slots.contains(where: { AgentLaunch.normalize($0.source) == source }) else { continue }
+            next.slots.insert(
+                DialogueSlot(
+                    id: "seed-\(source)",
+                    source: source,
+                    title: source == "mochi" ? "小猫" : "New chat",
+                    skin: Self.face(for: source),
+                    created: next.slots.first?.created ?? 0
+                ),
+                at: min(index, next.slots.count)
+            )
+        }
+        if !next.slots.contains(where: { $0.id == next.selected }) {
+            next.selected = next.slots.first?.id ?? ""
+        }
+        return next
+    }
+
     /// Adds a slot for each task id that is not stored yet. Face follows the source.
     public func merged(with tasks: [CursorTask]) -> DialogueSlotStore {
         var next = normalized()
@@ -170,7 +191,11 @@ public final class DialogueSlotDisk {
     }
 
     public func load(now: Double = Date().timeIntervalSince1970) -> DialogueSlotStore {
-        if let existing = read() { return existing }
+        if let existing = read() {
+            let filled = existing.ensuringSeedSources()
+            if filled != existing { save(filled) }
+            return filled
+        }
         var rng = SystemRandomNumberGenerator()
         let seeded = DialogueSlotStore.seed(now: now, rng: &rng)
         save(seeded)

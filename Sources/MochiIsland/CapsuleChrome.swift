@@ -366,8 +366,9 @@ struct CapsuleRoot: View {
         } label: {
             ZStack {
                 if slot.id == model.selected {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(.quaternary)
+                    Circle()
+                        .frame(width: CapsuleChrome.control, height: CapsuleChrome.control)
+                        .glassEffect(.clear, in: .circle)
                         .matchedGeometryEffect(id: "slot-selection", in: selectionNS)
                 }
                 if let image = slot.image {
@@ -384,6 +385,7 @@ struct CapsuleRoot: View {
             .frame(width: CapsuleChrome.control, height: CapsuleChrome.control)
         }
         .buttonStyle(.plain)
+        .contentShape(Circle())
         .accessibilityLabel(slot.title)
     }
 }

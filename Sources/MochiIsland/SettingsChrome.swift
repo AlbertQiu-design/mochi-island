@@ -62,7 +62,8 @@ final class SettingsChrome: NSObject {
         panel.hidesOnDeactivate = false
         panel.isMovable = false
         panel.ignoresMouseEvents = false
-        panel.becomesKeyOnlyIfNeeded = true
+        panel.becomesKeyOnlyIfNeeded = false
+        panel.acceptsMouseMovedEvents = true
         panel.isRestorable = false
         panel.animationBehavior = .none
         panel.title = "Mochi Settings"
@@ -105,8 +106,10 @@ final class SettingsChrome: NSObject {
             return
         }
         place(capsule: capsule, dock: dock, host: host)
+        panel.ignoresMouseEvents = false
         panel.alphaValue = 1
         panel.orderFrontRegardless()
+        panel.makeKey()
     }
 
     func hide() {
@@ -232,7 +235,12 @@ struct SettingsRoot: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(width: SettingsChrome.width, height: SettingsChrome.height)
-        .glassEffect(.clear, in: .rect(cornerRadius: 28))
+        .background {
+            Color.clear
+                .glassEffect(.clear, in: .rect(cornerRadius: 28))
+                .allowsHitTesting(false)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
     }
 
     private var settingsTabBar: some View {
@@ -249,23 +257,29 @@ struct SettingsRoot: View {
                 } label: {
                     Text(item.title)
                         .font(.system(size: 13, weight: .medium))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
+                        .frame(minWidth: 36, minHeight: 28)
+                        .padding(.horizontal, 8)
                         .background {
                             if model.tab == item {
-                                Capsule()
-                                    .fill(.tertiary)
+                                Circle()
+                                    .frame(width: 28, height: 28)
+                                    .glassEffect(.clear, in: .circle)
                                     .matchedGeometryEffect(id: "settings-tab", in: tabNS)
                             }
                         }
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
                 .accessibilityLabel(item.title)
                 .accessibilityAddTraits(model.tab == item ? .isSelected : [])
             }
         }
         .padding(4)
-        .glassEffect(.clear, in: .capsule)
+        .background {
+            Color.clear
+                .glassEffect(.clear, in: .capsule)
+                .allowsHitTesting(false)
+        }
     }
 
     private var dockPane: some View {

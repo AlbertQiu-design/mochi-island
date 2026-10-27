@@ -402,11 +402,23 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     }
 
     private func syncMousePassthrough() {
+        let screenMouse = NSEvent.mouseLocation
+        if settings.isVisible {
+            settings.panel.ignoresMouseEvents = false
+            if settings.panel.frame.insetBy(dx: -6, dy: -6).contains(screenMouse) {
+                panel.ignoresMouseEvents = false
+                return
+            }
+        }
+        if capsule.panel.frame.insetBy(dx: -6, dy: -6).contains(screenMouse) {
+            panel.ignoresMouseEvents = false
+            return
+        }
         if hotRects.isEmpty {
             panel.ignoresMouseEvents = true
             return
         }
-        let mouse = panel.convertPoint(fromScreen: NSEvent.mouseLocation)
+        let mouse = panel.convertPoint(fromScreen: screenMouse)
         let hit = hotRects.contains { $0.insetBy(dx: -10, dy: -10).contains(mouse) }
         panel.ignoresMouseEvents = !hit
     }
