@@ -6,8 +6,16 @@ let replyURL = AppPaths.cursor.appendingPathComponent("mochi-island-reply.json")
 let permissionTimeout: TimeInterval = 280
 
 enum AppPaths {
+    static var homeDirectory: URL {
+        #if os(macOS)
+        FileManager.default.homeDirectoryForCurrentUser
+        #else
+        URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        #endif
+    }
+
     static var cursor: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cursor", isDirectory: true)
+        homeDirectory.appendingPathComponent(".cursor", isDirectory: true)
     }
 }
 
@@ -20,7 +28,7 @@ let toolEvents: Set<String> = [
 let doneEvents: Set<String> = ["sessionEnd", "subagentStop"]
 let waitTools = ["AskQuestion": "choice", "CreatePlan": "plan", "SwitchMode": "mode"]
 let permissionEvents: Set<String> = ["beforeShellExecution", "beforeMCPExecution"]
-let heartbeatEvents: Set<String> = ["afterAgentThought", "afterAgentResponse", "stop"]
+let heartbeatEvents: Set<String> = ["afterAgentThought", "afterAgentResponse", "afterFileEdit", "stop"]
 let finishedTools: Set<String> = ["postToolUse", "postToolUseFailure", "afterShellExecution", "afterMCPExecution"]
 
 func emit(_ object: Any) {
@@ -278,6 +286,7 @@ func upsert(_ tasks: inout [String: Any], itemID: String, title: String, status:
         "status": nextStatus,
         "updated": Date().timeIntervalSince1970,
         "aliases": merged.filter { !$0.isEmpty }.sorted(),
+        "source": "cursor",
         "kind": nextExtra["kind"] as? String ?? "",
         "prompt": permissionPrompt,
         "detail": "",

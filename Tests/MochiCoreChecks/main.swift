@@ -124,7 +124,8 @@ func HookInstallBacksUpAndMarksEntries() throws {
         try Data("#!/bin/sh\nexit 0\n".utf8).write(to: binary)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary.path)
         let hooks = directory.appendingPathComponent("hooks.json")
-        try #"{"version":1,"hooks":{"sessionStart":[{"command":"/bin/echo keep"}]}}"#.data(using: .utf8)?.write(to: hooks)
+        let raw = #"{"version":1,"hooks":{"sessionStart":[{"command":"/bin/echo keep"}],"stop":[{"command":"/tmp/vibe-island-bridge --source cursor"}]}}"#
+        try raw.data(using: .utf8)?.write(to: hooks)
         let tasks = directory.appendingPathComponent("tasks.json")
         let blocked = HookInstaller.install(hooksURL: hooks, binaryURL: binary, tasksURL: tasks, privacyAccepted: false)
         check(blocked.needsPrivacy)
@@ -136,13 +137,27 @@ func HookInstallBacksUpAndMarksEntries() throws {
         let table = json?["hooks"] as? [String: Any]
         let entries = table?["sessionStart"] as? [[String: Any]]
         check(entries?.count == 2)
-        check(entries?.last?[AppConfig.hookMarker] as? Int == AppConfig.hookVersion)
+        check(entries?.first?[AppConfig.hookMarker] as? Int == AppConfig.hookVersion)
+        check(entries?.last?["command"] as? String == "/bin/echo keep")
+        let stop = table?["stop"] as? [[String: Any]]
+        check(stop?.count == 2)
+        check(stop?.first?[AppConfig.hookMarker] as? Int == AppConfig.hookVersion)
+        check((stop?.last?["command"] as? String)?.contains("vibe-island-bridge") == true)
+        for name in ["afterAgentResponse", "afterFileEdit"] {
+            let list = table?[name] as? [[String: Any]]
+            check(list?.first?[AppConfig.hookMarker] as? Int == AppConfig.hookVersion)
+        }
+        let shell = table?["beforeShellExecution"] as? [[String: Any]]
+        check(shell?.first?["timeout"] as? Int == 300)
         let removed = HookInstaller.remove(hooksURL: hooks, binaryURL: binary, tasksURL: tasks)
         check(!removed.connected)
         let after = try JSONSerialization.jsonObject(with: Data(contentsOf: hooks)) as? [String: Any]
         let left = (after?["hooks"] as? [String: Any])?["sessionStart"] as? [[String: Any]]
         check(left?.count == 1)
         check(left?.first?["command"] as? String == "/bin/echo keep")
+        let leftStop = (after?["hooks"] as? [String: Any])?["stop"] as? [[String: Any]]
+        check(leftStop?.count == 1)
+        check((leftStop?.first?["command"] as? String)?.contains("vibe-island-bridge") == true)
     }
 
 func TaskWatchFiresWhenTheFileIsReplaced() throws {
@@ -208,6 +223,234 @@ func ReplyWriterOnlyAllowsPermissionActions() throws {
             threw = true
         }
         check(threw)
+        let choiceURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        try ReplyWriter.writeChoice(id: "t2", requestID: "r2", action: "approve", kind: "plan", to: choiceURL)
+        let choice = try JSONSerialization.jsonObject(with: Data(contentsOf: choiceURL)) as? [String: Any]
+        check(choice?["action"] as? String == "approve")
+        check(choice?["kind"] as? String == "plan")
+        check(choice?["option_id"] as? String == "approve")
+    }
+
+func TaskReaderKeepsSource() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-src-\(UUID().uuidString).json")
+        let now = Date().timeIntervalSince1970
+        let payload: [String: Any] = [
+            "tasks": [
+                "c": ["id": "c", "title": "Cursor", "status": "running", "updated": now, "source": "cursor"],
+                "x": ["id": "x", "title": "Codex", "status": "running", "updated": now, "source": "codex"],
+                "g": ["id": "g", "title": "Grok", "status": "running", "updated": now, "source": "grok-bot"],
+                "m": ["id": "m", "title": "Cat", "status": "running", "updated": now, "source": "cat"],
+                "z": ["id": "z", "title": "Other", "status": "running", "updated": now, "source": "nope"]
+            ]
+        ]
+        try JSONSerialization.data(withJSONObject: payload).write(to: url)
+        let tasks = TaskReader.load(tasksURL: url, now: now)
+        let byID = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0.source) })
+        check(byID["c"] == "cursor")
+        check(byID["x"] == "codex")
+        check(byID["g"] == "grok-bot")
+        check(byID["m"] == "mochi")
+        check(byID["z"] == "cursor")
+        check(tasks.first { $0.id == "x" }?.dictionary["source"] as? String == "codex")
+    }
+
+func AgentLaunchFindsInstalledAppsAndCodexFallback() {
+        let cursor = AgentLaunch.plan(source: "Cursor") { path in
+            path.hasSuffix("/Cursor.app")
+        }
+        check(cursor.appPath?.hasSuffix("/Cursor.app") == true)
+        check(cursor.url == nil)
+        let missing = AgentLaunch.plan(source: "codex") { _ in false }
+        check(missing.appPath == nil)
+        check(missing.url == "https://chatgpt.com/codex")
+        check(missing.note?.contains("Codex.app") == true)
+        let grok = AgentLaunch.plan(source: "grok bot") { path in
+            path.hasSuffix("/Grok Bot.app")
+        }
+        check(grok.appPath?.hasSuffix("/Grok Bot.app") == true)
+        check(AgentLaunch.normalize("cat") == "mochi")
+        check(AgentLaunch.normalize("小猫") == "mochi")
+        let cat = AgentLaunch.plan(source: "mochi") { _ in true }
+        check(cat.appPath == nil)
+        check(cat.url == nil)
+        check(cat.note?.contains("小猫") == true)
+        let home = AppConfig.homeDirectory
+        check(home.isFileURL)
+        check(!home.path.isEmpty)
+        check(AppConfig.cursorDirectory.path.hasPrefix(home.path))
+        check(AppConfig.supportDirectory.path.contains(AppConfig.bundleID))
+        let fromHome = AgentLaunch.plan(source: "cursor", home: home) { _ in false }
+        check(fromHome.url == "https://cursor.com")
+    }
+
+struct SplitMix64: RandomNumberGenerator {
+    var state: UInt64
+    init(seed: UInt64) { self.state = seed }
+    mutating func next() -> UInt64 {
+        state &+= 0x9E3779B97F4A7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
+        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
+        return z ^ (z >> 31)
+    }
+}
+
+func DockPrefDefaultsToRight() {
+    let missing = IslandPrefs.parse([:])
+    check(missing.dock == "right")
+    let left = IslandPrefs.parse(["dock": "left"])
+    check(left.dock == "left")
+    check(left.dictionary["dock"] as? String == "left")
+    let right = IslandPrefs.parse(["dock": "right"], base: IslandPrefs(dock: "left"))
+    check(right.dock == "right")
+    let junk = IslandPrefs.parse(["dock": "middle"], base: IslandPrefs(dock: "left"))
+    check(junk.dock == "left")
+}
+
+func EmptySlotFileSeedsFourFaces() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-slots-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let disk = DialogueSlotDisk(directory: directory)
+    let store = disk.load(now: 10)
+    check(store.slots.count == 4)
+    check(store.slots.map(\.source) == DialogueSlotStore.seedSources)
+    check(Set(store.slots.map(\.source)) == Set(["cursor", "grok-bot", "mochi", "codex"]))
+    check(store.slots.first { $0.source == "mochi" }?.title == "小猫")
+    check(SlotFace.pack(for: "mochi") == "kitten")
+    check(SlotFace.resourceName(source: "小猫", status: "") == "kitten-wake")
+    check(SlotFace.resourceName(source: "mochi", status: "wait") == "kitten-wait")
+    check(SlotFace.displayName(for: "mochi") == "小猫")
+    check(SlotFace.label(title: "New chat", source: "mochi") == "小猫")
+    check(store.slots.allSatisfy { $0.skin == $0.source })
+    check(store.slots.allSatisfy { DialogueSlotStore.skins.contains($0.skin) })
+    check(store.selected == store.slots[0].id)
+    check(!store.slots[0].skin.contains("happy"))
+    check(!store.slots.contains { $0.skin.hasPrefix("blob-") })
+    check(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("mochi-island-tasks.json").path))
+    let again = disk.load(now: 99)
+    check(again == store)
+}
+
+func MergeKeepsSkinAndLeavesSlotsWhenTasksLeave() {
+    var rng = SplitMix64(seed: 3)
+    let seeded = DialogueSlotStore.seed(now: 1, rng: &rng)
+    let keptID = seeded.slots[0].id
+    let stillThere = seeded.merged(with: [])
+    check(stillThere.slots.contains { $0.id == keptID })
+
+    let store = DialogueSlotStore(
+        selected: "abc",
+        slots: [DialogueSlot(id: "abc", source: "cursor", title: "Keep", skin: "blob-3", created: 1)]
+    )
+    let task = CursorTask(id: "abc", title: "From bus", status: "running", source: "codex", updated: 5)
+    let merged = store.merged(with: [task])
+    check(merged.slots.count == 1)
+    check(merged.slots[0].skin == "codex")
+    check(merged.slots[0].source == "codex")
+    check(merged.slots[0].title == "From bus")
+    check(merged.merged(with: [task]).slots[0].skin == "codex")
+
+    let added = DialogueSlotStore().merged(with: [task])
+    check(added.slots[0].skin == "codex")
+    check(added.slots[0].skin == DialogueSlotStore.face(for: "codex"))
+}
+
+func CreateSlotAppendsAFaceWithoutATaskFile() {
+    var rng = SplitMix64(seed: 9)
+    let store = DialogueSlotStore.seed(now: 2, rng: &rng)
+    var createRNG = SplitMix64(seed: 11)
+    let (next, slot) = store.created(source: "Grok Bot", now: 20, rng: &createRNG)
+    check(next.slots.count == store.slots.count + 1)
+    check(next.selected == slot.id)
+    check(slot.source == "grok-bot")
+    check(slot.skin == "grok-bot")
+    check(slot.title == "New chat")
+    check(DialogueSlotStore.skins.contains(slot.skin))
+    check(!slot.skin.contains("happy"))
+    var catRNG = SplitMix64(seed: 12)
+    let cat = store.created(source: "小猫", now: 21, rng: &catRNG).1
+    check(cat.source == "mochi")
+    check(cat.skin == "mochi")
+}
+
+func KittenV1FaceFilesFollowSource() {
+    check(SlotFace.pack(for: "cursor") == "cursor")
+    check(SlotFace.pack(for: "grok-bot") == "grok")
+    check(SlotFace.pack(for: "小猫") == "kitten")
+    check(SlotFace.resourceName(source: "mochi", status: "running") == "kitten-work")
+    check(SlotFace.resourceName(source: "mochi", status: "done") == "kitten-done")
+    check(SlotFace.label(title: "Fix tabs", source: "cursor") == "Fix tabs")
+    check(SlotFace.displayName(for: "grok-bot") == "Grok Bot")
+}
+
+func EnsuringSeedAddsMissingKitten() {
+    let store = DialogueSlotStore(
+        selected: "seed-cursor",
+        slots: [
+            DialogueSlot(id: "seed-cursor", source: "cursor", title: "Cursor", skin: "cursor", created: 1),
+            DialogueSlot(id: "seed-grok-bot", source: "grok-bot", title: "Grok", skin: "grok-bot", created: 1)
+        ]
+    )
+    check(!store.slots.contains { $0.source == "mochi" })
+    let filled = store.ensuringSeedSources()
+    check(filled.slots.contains { $0.source == "mochi" && $0.id == "seed-mochi" })
+    check(filled.slots.contains { $0.source == "cursor" })
+    check(filled.slots.contains { $0.source == "grok-bot" })
+    check(filled.slots.contains { $0.source == "codex" && $0.id == "seed-codex" })
+    check(filled.slots.first { $0.source == "mochi" }?.title == "小猫")
+}
+
+func SelectingKeepsOnlyKnownIds() {
+    var rng = SplitMix64(seed: 5)
+    let store = DialogueSlotStore.seed(now: 1, rng: &rng)
+    let picked = store.slots[1].id
+    let next = store.selecting(picked)
+    check(next.selected == picked)
+    check(next.slots == store.slots)
+    let junk = store.selecting("missing")
+    check(junk.selected == store.selected)
+}
+
+func NewWaitSelectsOnlyAfterTheFirstSnapshot() {
+    var rng = SplitMix64(seed: 4)
+    let store = DialogueSlotStore.seed(now: 1, rng: &rng)
+    var known: Set<String> = []
+    var primed = false
+    let first = store.selectingNewWaits(
+        in: [CursorTask(id: "w", title: "Waiting", status: "wait", updated: 9)],
+        known: &known,
+        primed: &primed
+    )
+    check(primed)
+    check(first.selected == store.selected)
+    check(first.slots.contains { $0.id == "w" })
+    let second = first.selectingNewWaits(
+        in: [
+            CursorTask(id: "w", title: "Waiting", status: "wait", updated: 9),
+            CursorTask(id: "w2", title: "Newer", status: "wait", source: "codex", updated: 12)
+        ],
+        known: &known,
+        primed: &primed
+    )
+    check(second.selected == "w2")
+    check(second.slots.contains { $0.id == "w" })
+    check(second.slots.first { $0.id == "w2" }?.source == "codex")
+}
+
+func LiveHooksFixWhenAsked() {
+        guard let binary = ProcessInfo.processInfo.environment["MOCHI_FIX_LIVE_HOOKS"], !binary.isEmpty else { return }
+        let cursor = AppConfig.cursorDirectory
+        let result = HookInstaller.install(
+            hooksURL: cursor.appendingPathComponent("hooks.json"),
+            binaryURL: URL(fileURLWithPath: binary),
+            tasksURL: cursor.appendingPathComponent("mochi-island-tasks.json"),
+            privacyAccepted: true
+        )
+        if !result.connected {
+            fputs("FAIL live hooks \(result.error ?? "")\n", stderr)
+            exit(1)
+        }
+        print("live hooks updated")
     }
 
 PlayReducesEnergy()
@@ -223,4 +466,15 @@ OnlyRunningToDoneFeeds()
 try HookInstallBacksUpAndMarksEntries()
 try TaskWatchFiresWhenTheFileIsReplaced()
 try ReplyWriterOnlyAllowsPermissionActions()
+try TaskReaderKeepsSource()
+AgentLaunchFindsInstalledAppsAndCodexFallback()
+DockPrefDefaultsToRight()
+try EmptySlotFileSeedsFourFaces()
+MergeKeepsSkinAndLeavesSlotsWhenTasksLeave()
+CreateSlotAppendsAFaceWithoutATaskFile()
+KittenV1FaceFilesFollowSource()
+EnsuringSeedAddsMissingKitten()
+SelectingKeepsOnlyKnownIds()
+NewWaitSelectsOnlyAfterTheFirstSnapshot()
+LiveHooksFixWhenAsked()
 print("MochiCore checks passed")
