@@ -134,6 +134,14 @@ public struct DialogueSlotStore: Codable, Equatable {
         return (next, slot)
     }
 
+    public func selecting(_ id: String) -> DialogueSlotStore {
+        var next = normalized()
+        if next.slots.contains(where: { $0.id == id }) {
+            next.selected = id
+        }
+        return next
+    }
+
     /// Selects the newest wait id that was not already known. The first call only records ids.
     public func selectingNewWaits(in tasks: [CursorTask], known: inout Set<String>, primed: inout Bool) -> DialogueSlotStore {
         var next = merged(with: tasks)

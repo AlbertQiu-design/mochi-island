@@ -360,6 +360,17 @@ func CreateSlotAppendsAFaceWithoutATaskFile() {
     check(cat.skin == "mochi")
 }
 
+func SelectingKeepsOnlyKnownIds() {
+    var rng = SplitMix64(seed: 5)
+    let store = DialogueSlotStore.seed(now: 1, rng: &rng)
+    let picked = store.slots[1].id
+    let next = store.selecting(picked)
+    check(next.selected == picked)
+    check(next.slots == store.slots)
+    let junk = store.selecting("missing")
+    check(junk.selected == store.selected)
+}
+
 func NewWaitSelectsOnlyAfterTheFirstSnapshot() {
     var rng = SplitMix64(seed: 4)
     let store = DialogueSlotStore.seed(now: 1, rng: &rng)
@@ -421,6 +432,7 @@ DockPrefDefaultsToRight()
 try EmptySlotFileSeedsThreeFaces()
 MergeKeepsSkinAndLeavesSlotsWhenTasksLeave()
 CreateSlotAppendsAFaceWithoutATaskFile()
+SelectingKeepsOnlyKnownIds()
 NewWaitSelectsOnlyAfterTheFirstSnapshot()
 LiveHooksFixWhenAsked()
 print("MochiCore checks passed")

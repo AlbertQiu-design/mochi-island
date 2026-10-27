@@ -116,11 +116,13 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     private var hotRects: [NSRect] = []
     private var localMonitor: Any?
     private var globalMonitor: Any?
+    private let capsule = CapsuleChrome()
 
     func start() {
         configurePanel()
         configureWebView()
         applyFrame()
+        configureCapsule()
         startMousePassthrough()
         panel.orderFrontRegardless()
         loadPage()
@@ -187,6 +189,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
         case "savePrefs":
             session.replacePrefs(body)
             retintGlass()
+            refreshCapsule()
         case "hotRects":
             hotRects = Self.parseRects(body["rects"], windowHeight: panel.frame.height)
             syncMousePassthrough()
@@ -214,10 +217,57 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
             session.setScanTranscripts(body["enabled"] as? Bool ?? false)
             reply(requestID, ["ok": true, "scanTranscripts": session.currentPrefs.scanTranscripts])
         case "createSlot":
-            reply(requestID, session.createSlot(source: body["source"] as? String ?? ""))
+            let created = session.createSlot(source: body["source"] as? String ?? "")
+            refreshCapsule()
+            reply(requestID, created)
         default:
             break
         }
+    }
+
+    private func configureCapsule() {
+        capsule.attach(to: panel)
+        capsule.onSelect = { [weak self] id, open in
+            guard let self else { return }
+            _ = self.session.selectSlot(id)
+            self.refreshCapsule()
+            self.tellPage(
+                "window.applyCapsuleEvent && window.applyCapsuleEvent({kind:'select',id:\(Self.jsonString(id)),open:\(open ? "true" : "false")});"
+            )
+        }
+        capsule.onCreate = { [weak self] source in
+            guard let self else { return }
+            let created = self.session.createSlot(source: source)
+            self.refreshCapsule()
+            self.tellPage(
+                "window.applyCapsuleEvent && window.applyCapsuleEvent({kind:'created',selected:\(Self.jsonString(created["selected"] as? String ?? "")),slots:\(Self.jsonString(created["slots"] ?? []))});"
+            )
+        }
+        capsule.onSettings = { [weak self] in
+            self?.tellPage("window.applyCapsuleEvent && window.applyCapsuleEvent({kind:'settings'});")
+        }
+        refreshCapsule()
+    }
+
+    private func refreshCapsule() {
+        let state = session.statePayload()
+        let tasks = session.tasksPayload()
+        capsule.sync(
+            slots: state["slots"] as? [[String: Any]] ?? [],
+            selected: state["selected"] as? String ?? "",
+            tasks: tasks,
+            dock: session.currentPrefs.dock
+        )
+        publishCapsule()
+    }
+
+    private func publishCapsule() {
+        let payload = Self.jsonString(capsule.chromePayload(in: panel))
+        tellPage("window.applyCapsuleChrome && window.applyCapsuleChrome(\(payload));")
+    }
+
+    private func tellPage(_ script: String) {
+        webView?.evaluateJavaScript(script, completionHandler: nil)
     }
 
     private func reply(_ id: String, _ object: Any) {
@@ -256,6 +306,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
             "window.pushTasks && window.pushTasks(\(tasks), \(state));",
             completionHandler: nil
         )
+        refreshCapsule()
     }
 
     private func injectPageState() {
@@ -265,6 +316,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
             "window.applyScreenLayout && window.applyScreenLayout(\(layout)); window.applyPrefs && window.applyPrefs(\(payload));",
             completionHandler: nil
         )
+        refreshCapsule()
     }
 
     private func retryLoad() {
@@ -285,6 +337,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     @objc private func screenChanged() {
         applyFrame()
         injectPageState()
+        refreshCapsule()
     }
 
     private func applyFrame() {

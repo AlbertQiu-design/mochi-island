@@ -1,9 +1,4 @@
-const capsule = document.getElementById("capsule");
-const slotList = document.getElementById("slot-list");
-const addBtn = document.getElementById("add-btn");
-const settingsBtn = document.getElementById("settings-btn");
 const settingsCard = document.getElementById("settings-card");
-const sourceMenu = document.getElementById("source-menu");
 const popup = document.getElementById("popup");
 const popupApp = popup.querySelector(".popup-app");
 const popupTitle = popup.querySelector(".popup-title");
@@ -69,6 +64,26 @@ let liveTasks = [];
 let selectedId = "";
 let popupOpen = false;
 let waitIDs = new Set();
+let chromeBox = { left: 0, top: 0, right: 56, bottom: 200, w: 56, h: 200, x: 0, y: 0 };
+let chromeSlots = {};
+let chromeAdd = { left: 0, top: 0, w: 36, h: 36 };
+let chromeSettings = { left: 0, top: 0, w: 36, h: 36 };
+let chromeMeta = {
+  material: "NSGlassEffectView.regular",
+  menuCount: 3,
+  capsuleW: 56,
+  slotW: 56,
+  slotH: 36,
+  faceW: 36,
+  faceH: 36,
+  slotGap: 8,
+  addW: 36,
+  gearW: 36,
+  addSymbol: "plus",
+  gearSymbol: "gearshape",
+  caret: 8,
+  selected: "",
+};
 const choiceOverlay = new Map();
 const stored = {
   dx: 0,
@@ -112,6 +127,27 @@ window.__mochiClearChoices = () => {
   choiceOverlay.clear();
 };
 
+window.__mochiSlots = () =>
+  slotRecords.map((slot) => ({
+    id: slot.id,
+    source: slot.source,
+    app: APP_NAME[slot.source] || "Cursor",
+    selected: slot.id === selectedId,
+    face: faceFile(slot),
+    popupApp: popupApp.textContent || "",
+  }));
+
+window.__capsuleChrome = () => ({
+  ...chromeMeta,
+  capsule: chromeBox,
+  slots: chromeSlots,
+  add: chromeAdd,
+  settings: chromeSettings,
+  dock: document.body.dataset.dock === "left" ? "left" : "right",
+  selected: selectedId,
+  popupOpen,
+});
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -144,14 +180,12 @@ function faceState(status) {
   return "wake";
 }
 
-function slotFaceHTML(slot) {
+function faceFile(slot) {
   const source = faceSkin(slot.source);
   const task = liveTask(slot.id);
   const state = faceState(task && task.status);
   const pack = FACE_SRC[source];
-  const src = pack ? pack[state] || pack.wake : "";
-  const img = src ? `<img src="${src}" alt="">` : "";
-  return `<span class="slot-face face-${source}" aria-hidden="true">${img}</span>`;
+  return pack ? pack[state] || pack.wake : "";
 }
 
 function normalizeSlot(raw) {
@@ -231,14 +265,13 @@ window.pushTasks = (tasks, state) => {
   applySnapshot(tasks, state || {});
 };
 
-function renderSlots() {
-  slotList.innerHTML = slotRecords
-    .map((slot) => {
-      const selected = slot.id === selectedId ? " selected" : "";
-      const label = escapeHtml(slot.title || "New chat");
-      return `<button type="button" class="slot${selected}" data-task-id="${escapeHtml(slot.id)}" data-source="${slot.source}" data-app="${escapeHtml(APP_NAME[slot.source] || "Cursor")}" aria-label="${label}">${slotFaceHTML(slot)}</button>`;
-    })
-    .join("");
+function boxRect(box, fallbackW, fallbackH) {
+  if (!box) return { left: 0, top: 0, right: fallbackW, bottom: fallbackH, w: fallbackW, h: fallbackH };
+  const left = Number(box.left ?? box.x) || 0;
+  const top = Number(box.top ?? box.y) || 0;
+  const width = Number(box.w) || fallbackW;
+  const height = Number(box.h) || fallbackH;
+  return { left, top, right: left + width, bottom: top + height, w: width, h: height };
 }
 
 function summaryHTML(slot, task) {
@@ -296,7 +329,6 @@ function renderPopup() {
 }
 
 function paint() {
-  renderSlots();
   renderPopup();
   placeFloating();
   requestAnimationFrame(reportHotRects);
@@ -304,14 +336,13 @@ function paint() {
 
 function placeFloating() {
   const dock = document.body.dataset.dock === "left" ? "left" : "right";
-  const capsuleBox = capsule.getBoundingClientRect();
+  const capsuleBox = boxRect(chromeBox, 56, 200);
   const gap = 8;
   if (!popup.hidden) {
     const width = 200;
-    const slotEl = selectedId ? slotList.querySelector(`.slot[data-task-id="${CSS.escape(selectedId)}"]`) : null;
-    const slotBox = slotEl ? slotEl.getBoundingClientRect() : null;
+    const slotBox = boxRect(chromeSlots[selectedId], 56, 36);
     const height = popup.offsetHeight || 120;
-    const anchorMid = slotBox ? slotBox.top + slotBox.height / 2 : capsuleBox.top + capsuleBox.height / 2;
+    const anchorMid = chromeSlots[selectedId] ? slotBox.top + slotBox.h / 2 : capsuleBox.top + capsuleBox.h / 2;
     let left = dock === "right" ? capsuleBox.left - gap - width : capsuleBox.right + gap;
     let top = anchorMid - height / 2;
     top = clamp(top, 8, Math.max(8, window.innerHeight - 8 - height));
@@ -319,22 +350,11 @@ function placeFloating() {
     popup.style.left = `${left}px`;
     popup.style.top = `${top}px`;
   }
-  if (!sourceMenu.hidden) {
-    const width = sourceMenu.offsetWidth || 148;
-    const height = sourceMenu.offsetHeight || 120;
-    const addBox = addBtn.getBoundingClientRect();
-    let left = dock === "right" ? capsuleBox.left - gap - width : capsuleBox.right + gap;
-    let top = addBox.top - height - gap;
-    top = clamp(top, 8, Math.max(8, window.innerHeight - 8 - height));
-    left = clamp(left, 8, Math.max(8, window.innerWidth - 8 - width));
-    sourceMenu.style.left = `${left}px`;
-    sourceMenu.style.top = `${top}px`;
-  }
   if (document.body.classList.contains("settings-open")) {
     const width = Math.min(540, Math.max(280, window.innerWidth - 56 - 32));
     settingsCard.style.width = `${width}px`;
     const height = settingsCard.offsetHeight || 280;
-    const gearBox = settingsBtn.getBoundingClientRect();
+    const gearBox = boxRect(chromeSettings, 36, 36);
     let left = dock === "right" ? capsuleBox.left - gap - width : capsuleBox.right + gap;
     let top = gearBox.bottom - height;
     top = clamp(top, 8, Math.max(8, window.innerHeight - 8 - height));
@@ -363,9 +383,8 @@ function glassShape(el) {
 }
 
 function reportHotRects() {
-  const nodes = [capsule];
+  const nodes = [];
   if (!popup.hidden) nodes.push(popup);
-  if (!sourceMenu.hidden) nodes.push(sourceMenu);
   if (document.body.classList.contains("settings-open")) nodes.push(settingsCard);
   const rects = nodes
     .map((el) => {
@@ -395,10 +414,59 @@ function setDock(side, persist) {
 
 function setSettingsOpen(open) {
   document.body.classList.toggle("settings-open", open);
-  if (open) sourceMenu.hidden = true;
   placeFloating();
   requestAnimationFrame(reportHotRects);
 }
+
+window.applyCapsuleChrome = function applyCapsuleChrome(info) {
+  if (!info || typeof info !== "object") return;
+  if (info.dock === "left" || info.dock === "right") setDock(info.dock, false);
+  chromeBox = boxRect(info.capsule, 56, Number(info.capsule && info.capsule.h) || 200);
+  chromeSlots = info.slots && typeof info.slots === "object" ? info.slots : {};
+  chromeAdd = boxRect(info.add, 36, 36);
+  chromeSettings = boxRect(info.settings, 36, 36);
+  chromeMeta = {
+    material: info.material || chromeMeta.material,
+    menuCount: Number(info.menuCount) || 3,
+    capsuleW: Number(info.capsuleW) || 56,
+    slotW: Number(info.slotW) || 56,
+    slotH: Number(info.slotH) || 36,
+    faceW: Number(info.faceW) || 36,
+    faceH: Number(info.faceH) || 36,
+    slotGap: Number(info.slotGap) || 8,
+    addW: Number(info.addW) || 36,
+    gearW: Number(info.gearW) || 36,
+    addSymbol: info.addSymbol || "plus",
+    gearSymbol: info.gearSymbol || "gearshape",
+    caret: Number(info.caret) || 8,
+    selected: info.selected || selectedId,
+  };
+  if (typeof info.selected === "string" && info.selected) selectedId = info.selected;
+  placeFloating();
+  requestAnimationFrame(reportHotRects);
+};
+
+window.applyCapsuleEvent = function applyCapsuleEvent(event) {
+  if (!event || typeof event !== "object") return;
+  if (event.kind === "select") {
+    selectedId = event.id || selectedId;
+    popupOpen = event.open !== false;
+    paint();
+    return;
+  }
+  if (event.kind === "settings") {
+    setSettingsOpen(!document.body.classList.contains("settings-open"));
+    return;
+  }
+  if (event.kind === "created") {
+    if (Array.isArray(event.slots)) {
+      slotRecords = event.slots.map(normalizeSlot).filter(Boolean);
+    }
+    selectedId = event.selected || selectedId;
+    popupOpen = true;
+    paint();
+  }
+};
 
 function currentPrefs() {
   return {
@@ -658,63 +726,6 @@ fillSwatches();
 fillSoundPicks();
 fillLookPicks();
 
-slotList.addEventListener("click", (event) => {
-  const button = event.target.closest(".slot");
-  if (!button) return;
-  event.stopPropagation();
-  const id = button.dataset.taskId || "";
-  if (id === selectedId && popupOpen) popupOpen = false;
-  else {
-    selectedId = id;
-    popupOpen = true;
-  }
-  sourceMenu.hidden = true;
-  paint();
-  persistPrefs();
-});
-
-addBtn.addEventListener("click", (event) => {
-  event.stopPropagation();
-  sourceMenu.hidden = !sourceMenu.hidden;
-  if (!sourceMenu.hidden) setSettingsOpen(false);
-  placeFloating();
-  requestAnimationFrame(reportHotRects);
-});
-
-sourceMenu.addEventListener("click", async (event) => {
-  const button = event.target.closest("button[data-source]");
-  if (!button) return;
-  event.stopPropagation();
-  sourceMenu.hidden = true;
-  if (!window.webkit?.messageHandlers?.island) {
-    const source = taskSource({ source: button.dataset.source });
-    const slot = {
-      id: `preview-${source}-${Date.now()}`,
-      source,
-      title: "New chat",
-      skin: faceSkin(source),
-      created: Date.now(),
-    };
-    slotRecords.push(slot);
-    selectedId = slot.id;
-    popupOpen = true;
-    paint();
-    return;
-  }
-  try {
-    const result = await islandCall("createSlot", { source: button.dataset.source || "cursor" });
-    if (result && Array.isArray(result.slots)) {
-      slotRecords = result.slots.map(normalizeSlot).filter(Boolean);
-      selectedId = result.selected || selectedId;
-      popupOpen = true;
-      paint();
-      persistPrefs();
-    }
-  } catch (error) {
-    requestAnimationFrame(reportHotRects);
-  }
-});
-
 popup.addEventListener("click", (event) => {
   const button = event.target.closest(".speech-option");
   if (button) {
@@ -726,11 +737,6 @@ popup.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
   openAgentWindow().catch(() => {});
-});
-
-settingsBtn.addEventListener("click", (event) => {
-  event.stopPropagation();
-  setSettingsOpen(!document.body.classList.contains("settings-open"));
 });
 
 settingsCard.addEventListener("click", (event) => event.stopPropagation());
@@ -854,7 +860,6 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   popupOpen = false;
   popup.hidden = true;
-  sourceMenu.hidden = true;
   setSettingsOpen(false);
 });
 

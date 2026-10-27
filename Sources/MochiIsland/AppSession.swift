@@ -78,6 +78,19 @@ final class AppSession {
         ]
     }
 
+    func selectSlot(_ id: String) -> [String: Any] {
+        let next = slots.selecting(id)
+        if next != slots {
+            slots = next
+            slotDisk.save(slots)
+        }
+        return [
+            "ok": true,
+            "selected": slots.selected,
+            "slots": slots.slots.map(\.dictionary)
+        ]
+    }
+
     func linkPayload(action: String, acknowledged: Bool) -> [String: Any] {
         let binary = hookBinary()
         let result: HookInstallResult

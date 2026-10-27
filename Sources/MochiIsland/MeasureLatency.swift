@@ -11,6 +11,7 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
 
     private var webView: WKWebView?
     private var window: NSWindow?
+    private let capsule = CapsuleChrome()
     private var watch: TaskFileWatch?
     private var tasksURL = URL(fileURLWithPath: "/tmp")
     private var replyURL = URL(fileURLWithPath: "/tmp")
@@ -63,7 +64,32 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
         window.orderFrontRegardless()
         self.window = window
         self.webView = view
+        capsule.attach(to: window)
         view.loadFileURL(html, allowingReadAccessTo: html.deletingLastPathComponent())
+    }
+
+    private func publishChrome(selected: String = "", dock: String = "right") {
+        guard let window else { return }
+        let slots = displayed.map { task -> [String: Any] in
+            [
+                "id": task["id"] as? String ?? "",
+                "source": task["source"] as? String ?? "cursor",
+                "title": task["title"] as? String ?? "New chat",
+                "skin": AgentLaunch.normalize(task["source"] as? String),
+                "created": task["updated"] ?? 0
+            ]
+        }
+        capsule.sync(
+            slots: slots,
+            selected: selected.isEmpty ? (slots.first?["id"] as? String ?? "") : selected,
+            tasks: displayed,
+            dock: dock
+        )
+        let payload = json(capsule.chromePayload(in: window))
+        webView?.evaluateJavaScript(
+            "window.applyCapsuleChrome && window.applyCapsuleChrome(\(payload));",
+            completionHandler: nil
+        )
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -188,8 +214,9 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
         displayed = payload
         let tasksJSON = json(payload)
         let id = expectedID
+        publishChrome(selected: id)
         webView?.evaluateJavaScript(
-            "window.pushTasks(\(tasksJSON), \(stateJSON)); var node=document.querySelector('.slot[data-task-id=\"\(id)\"]'); node ? 'ok' : 'miss';"
+            "window.pushTasks(\(tasksJSON), \(stateJSON)); var rows=window.__mochiSlots && window.__mochiSlots(); (rows||[]).some(function(row){return row.id==='\(id)';}) ? 'ok' : 'miss';"
         ) { [weak self] result, _ in
             DispatchQueue.main.async {
                 guard let self, !self.done else { return }
@@ -226,11 +253,13 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
             "request_id": "req-choice"
         ]
         displayed = [task]
+        publishChrome(selected: choiceTaskID)
         let tasksJSON = json([task])
         let script = """
         window.__mochiClearChoices && window.__mochiClearChoices();
         window.__mochiMeasure = {choiceBubbleDone:false, choiceReplyDone:false};
         window.pushTasks(\(tasksJSON), \(stateJSON));
+        window.applyCapsuleEvent && window.applyCapsuleEvent({kind:'select',id:'\(choiceTaskID)',open:true});
         var button = document.querySelector('#popup .speech-option');
         if (!button) { window.__mochiMeasure.missing = true; window.__mochiMeasure.choiceReplyDone = true; }
         else { button.click(); }
@@ -285,15 +314,12 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
             task(id: "src-grok", title: "Grok Bot smoke", status: "running", source: "grok-bot", updated: now)
         ]
         displayed = tasks
+        publishChrome(selected: "src-cursor")
         let script = """
         window.__mochiClearChoices && window.__mochiClearChoices();
         window.pushTasks(\(json(tasks)), \(stateJSON));
-        JSON.stringify([...document.querySelectorAll('.slot')].map((node) => ({
-          source: node.dataset.source || '',
-          app: node.dataset.app || '',
-          selected: node.classList.contains('selected'),
-          popupApp: (document.querySelector('.popup-app') || {}).textContent || ''
-        })));
+        window.applyCapsuleEvent && window.applyCapsuleEvent({kind:'select',id:'src-cursor',open:true});
+        JSON.stringify((window.__mochiSlots && window.__mochiSlots()) || []);
         """
         webView?.evaluateJavaScript(script) { [weak self] result, _ in
             DispatchQueue.main.async {
@@ -355,9 +381,12 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
             ]
         ]
         displayed = tasks
+        publishChrome(selected: "style-open", dock: "right")
+        let native = capsule.metrics()
         let script = """
         window.__mochiClearChoices && window.__mochiClearChoices();
         window.pushTasks(\(json(tasks)), \(stateJSON));
+        window.applyCapsuleEvent && window.applyCapsuleEvent({kind:'select',id:'style-open',open:true});
         (function () {
         function box(el) {
           var rect = el.getBoundingClientRect();
@@ -370,44 +399,29 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
             && Math.round(parseFloat(parts[1])) === 17
             && Math.round(parseFloat(parts[2])) === 17;
         }
-        function caretBorders() {
-          var sel = document.querySelector('.slot.selected');
-          if (!sel) return { left: -1, right: -1 };
-          var cs = getComputedStyle(sel, '::after');
-          return {
-            left: Math.round(parseFloat(cs.borderLeftWidth) || 0),
-            right: Math.round(parseFloat(cs.borderRightWidth) || 0),
-            content: cs.content || ''
-          };
-        }
         var popupEl = document.getElementById('popup');
         var bar = popupEl.querySelector('.popup-bar');
         var title = popupEl.querySelector('.popup-title');
         var summary = popupEl.querySelector('.popup-summary');
-        var capsuleEl = document.querySelector('.capsule');
-        var slot = document.querySelector('.slot');
-        var face = slot.querySelector('.slot-face');
+        var chrome = (window.__capsuleChrome && window.__capsuleChrome()) || {};
+        var cap = chrome.capsule || {};
         var src = popupEl.querySelector('.popup-source');
-        var right = { popup: box(popupEl), capsule: box(capsuleEl) };
-        var caretRight = caretBorders();
-        var capBox = capsuleEl.getBoundingClientRect();
+        var right = { popup: box(popupEl), capsule: cap };
         var half = window.innerHeight * 0.5;
-        var centerDelta = Math.abs((capBox.top + capBox.height / 2) - half);
         document.body.dataset.dock = 'left';
-        window.applyScreenLayout();
-        var left = { popup: box(popupEl), capsule: box(capsuleEl) };
-        var caretLeft = caretBorders();
+        window.applyCapsuleChrome && window.applyCapsuleChrome(Object.assign({}, chrome, {dock:'left'}));
+        window.applyScreenLayout && window.applyScreenLayout();
+        var left = { popup: box(popupEl), capsule: ((window.__capsuleChrome && window.__capsuleChrome()) || {}).capsule || cap };
         document.body.dataset.dock = 'right';
-        window.applyScreenLayout();
+        window.applyCapsuleChrome && window.applyCapsuleChrome(Object.assign({}, chrome, {dock:'right'}));
+        window.applyScreenLayout && window.applyScreenLayout();
         var titleStyle = getComputedStyle(title);
         var summaryStyle = getComputedStyle(summary);
-        var capStyle = getComputedStyle(capsuleEl);
         var popupStyle = getComputedStyle(popupEl);
-        var faceBox = face.getBoundingClientRect();
-        var selected = document.querySelector('.slot.selected');
         var summaryMaxN = parseFloat(summaryStyle.maxHeight);
-        var capsuleMax = parseFloat(capStyle.maxHeight);
         var popupMax = parseFloat(popupStyle.maxHeight);
+        var rows = (window.__mochiSlots && window.__mochiSlots()) || [];
+        var selected = rows.find(function (row) { return row.selected; }) || {};
         return JSON.stringify({
           popupW: right.popup.w,
           barH: box(bar).h,
@@ -417,33 +431,15 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
           summaryMaxN: Math.round(summaryMaxN),
           summaryOverflow: summaryStyle.overflowY,
           summaryWithin: summaryMaxN > 0 && summaryMaxN <= half + 1,
-          capsuleW: right.capsule.w,
-          slotW: box(slot).w,
-          slotH: box(slot).h,
-          faceW: Math.round(faceBox.width),
-          faceH: Math.round(faceBox.height),
-          slotGap: Math.round(parseFloat(getComputedStyle(document.querySelector('.slot-list')).gap) || 0),
-          addW: box(document.querySelector('.add-btn')).w,
-          gearW: box(document.querySelector('.gear')).w,
           sourceW: src ? box(src).w : 0,
           sourceH: src ? box(src).h : 0,
-          menuCount: document.querySelectorAll('#source-menu button').length,
-          rightInward: right.popup.right <= right.capsule.left + 1,
-          leftInward: left.popup.left >= left.capsule.right - 1,
-          face: face ? face.className : '',
-          faceSrc: (slot.querySelector('img') || {}).getAttribute('src') || '',
-          cat: !!slot.querySelector('img'),
-          shellCapsule: shell(capsuleEl),
+          rightInward: right.popup.right <= (Number(right.capsule.left) || 0) + 1,
+          leftInward: left.popup.left >= (Number(left.capsule.right) || 0) - 1,
+          faceSrc: selected.face || '',
+          faceSource: selected.source || '',
           shellPopup: shell(popupEl),
-          withinHalf: capBox.height <= half + 1 && Math.abs(capsuleMax - half) <= 1 && Math.abs(popupMax - half) <= 1,
-          centered: centerDelta <= 1,
-          noPercent: (capsuleEl.textContent || '').indexOf('%') === -1,
-          noRing: !selected || getComputedStyle(selected).boxShadow === 'none',
-          caretRightL: caretRight.left,
-          caretRightR: caretRight.right,
-          caretLeftL: caretLeft.left,
-          caretLeftR: caretLeft.right,
-          caretMark: caretRight.content !== 'none' && caretRight.content !== 'normal'
+          popupMaxOK: popupMax <= half + 1,
+          chrome: chrome
         });
         })()
         """
@@ -455,6 +451,11 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
                 func whole(_ key: String) -> Int {
                     if let number = style[key] as? NSNumber { return number.intValue }
                     if let number = style[key] as? Int { return number }
+                    return -1
+                }
+                func nativeWhole(_ key: String) -> Int {
+                    if let number = native[key] as? NSNumber { return number.intValue }
+                    if let number = native[key] as? Int { return number }
                     return -1
                 }
                 func flag(_ key: String) -> Bool {
@@ -470,34 +471,30 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
                     && whole("sourceW") == 16
                     && whole("sourceH") == 16
                 let summaryOK = flag("summaryWithin") && (style["summaryOverflow"] as? String) == "auto"
-                let capsuleOK = whole("capsuleW") == 56
-                    && whole("slotW") == 56
-                    && whole("slotH") == 36
-                    && whole("faceW") == 36
-                    && whole("faceH") == 36
-                    && whole("slotGap") == 8
-                    && whole("addW") == 36
-                    && whole("gearW") == 36
-                    && whole("menuCount") == 3
-                    && flag("withinHalf")
-                    && flag("centered")
-                    && flag("shellCapsule")
+                let capsuleOK = nativeWhole("capsuleW") == 56
+                    && nativeWhole("slotW") == 56
+                    && nativeWhole("slotH") == 36
+                    && nativeWhole("faceW") == 36
+                    && nativeWhole("faceH") == 36
+                    && nativeWhole("slotGap") == 8
+                    && nativeWhole("addW") == 36
+                    && nativeWhole("gearW") == 36
+                    && nativeWhole("menuCount") == 3
+                    && (native["material"] as? String) == CapsuleChrome.materialAPI
+                    && (native["addSymbol"] as? String) == CapsuleChrome.addSymbol
+                    && (native["gearSymbol"] as? String) == CapsuleChrome.settingsSymbol
+                    && (native["equalControls"] as? Bool ?? false)
                     && flag("shellPopup")
-                    && flag("noPercent")
-                    && flag("noRing")
-                let caretOK = flag("caretMark")
-                    && whole("caretRightR") == 8
-                    && whole("caretRightL") == 0
-                    && whole("caretLeftL") == 8
-                    && whole("caretLeftR") == 0
+                    && flag("popupMaxOK")
                 let inwardOK = flag("rightInward") && flag("leftInward")
-                let face = style["face"] as? String ?? ""
                 let faceSrc = style["faceSrc"] as? String ?? ""
-                let faceOK = face.contains("face-cursor") && flag("cat") && faceSrc.contains("cursor-") && !faceSrc.contains("happy.png")
-                if titleOK && popupOK && summaryOK && capsuleOK && caretOK && inwardOK && faceOK {
+                let faceOK = (style["faceSource"] as? String) == "cursor"
+                    && faceSrc.contains("cursor-")
+                    && !faceSrc.contains("happy.png")
+                if titleOK && popupOK && summaryOK && capsuleOK && inwardOK && faceOK {
                     self.styleReport = "pass"
                 } else {
-                    self.styleReport = "fail \(text)"
+                    self.styleReport = "fail \(text) native=\(native)"
                 }
                 self.probeHotzone()
             }
