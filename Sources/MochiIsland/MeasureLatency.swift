@@ -363,6 +363,15 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
           var rect = el.getBoundingClientRect();
           return { w: Math.round(rect.width), h: Math.round(rect.height), left: rect.left, right: rect.right, top: rect.top };
         }
+        function glyphDelta(parent, child) {
+          if (!parent || !child) return { dx: 99, dy: 99 };
+          var a = parent.getBoundingClientRect();
+          var b = child.getBoundingClientRect();
+          return {
+            dx: Math.round((b.left + b.width / 2) - (a.left + a.width / 2)),
+            dy: Math.round((b.top + b.height / 2) - (a.top + a.height / 2))
+          };
+        }
         function shell(el) {
           var raw = getComputedStyle(el).backgroundColor;
           var parts = raw.replace(/rgba?\\(/, '').replace(/\\).*/, '').split(',');
@@ -424,7 +433,13 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
           faceH: Math.round(faceBox.height),
           slotGap: Math.round(parseFloat(getComputedStyle(document.querySelector('.slot-list')).gap) || 0),
           addW: box(document.querySelector('.add-btn')).w,
+          addH: box(document.querySelector('.add-btn')).h,
           gearW: box(document.querySelector('.gear')).w,
+          gearH: box(document.querySelector('.gear')).h,
+          plusDX: glyphDelta(document.querySelector('.add-btn'), document.querySelector('.plus-glyph')).dx,
+          plusDY: glyphDelta(document.querySelector('.add-btn'), document.querySelector('.plus-glyph')).dy,
+          gearDX: glyphDelta(document.querySelector('.gear'), document.querySelector('.gear-glyph')).dx,
+          gearDY: glyphDelta(document.querySelector('.gear'), document.querySelector('.gear-glyph')).dy,
           sourceW: src ? box(src).w : 0,
           sourceH: src ? box(src).h : 0,
           menuCount: document.querySelectorAll('#source-menu button').length,
@@ -477,7 +492,13 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
                     && whole("faceH") == 36
                     && whole("slotGap") == 8
                     && whole("addW") == 36
+                    && whole("addH") == 36
                     && whole("gearW") == 36
+                    && whole("gearH") == 36
+                    && whole("plusDX") == 0
+                    && whole("plusDY") == 0
+                    && whole("gearDX") == 0
+                    && whole("gearDY") == 0
                     && whole("menuCount") == 3
                     && flag("withinHalf")
                     && flag("centered")
