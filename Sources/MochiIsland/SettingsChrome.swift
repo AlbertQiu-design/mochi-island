@@ -106,7 +106,7 @@ final class SettingsChrome: NSObject {
     }
 
     func select(_ tab: SettingsTab) {
-        model.tab = tab
+        model.show(tab)
     }
 
     func toggle(capsule: NSRect, dock: String, host: NSWindow) {
@@ -115,6 +115,7 @@ final class SettingsChrome: NSObject {
             return
         }
         place(capsule: capsule, dock: dock, host: host)
+        model.show(model.tab)
         panel.ignoresMouseEvents = false
         panel.alphaValue = 1
         panel.orderFrontRegardless()
@@ -169,6 +170,10 @@ final class SettingsModel: ObservableObject {
     var onPrefs: (([String: Any]) -> Void)?
     var onLink: ((String, Bool) -> [String: Any])?
     var onScan: ((Bool) -> Void)?
+
+    func show(_ tab: SettingsTab) {
+        self.tab = tab
+    }
 
     func apply(prefs: IslandPrefs, link: [String: Any]) {
         dock = prefs.dock
@@ -270,7 +275,7 @@ struct SettingsRoot: View {
         let selected = model.tab == item
         return Button {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                model.tab = item
+                model.show(item)
             }
         } label: {
             Text(item.title)
