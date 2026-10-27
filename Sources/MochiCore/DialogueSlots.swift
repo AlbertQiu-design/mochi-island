@@ -58,7 +58,7 @@ public struct DialogueSlotStore: Codable, Equatable {
             DialogueSlot(
                 id: "seed-\(source)",
                 source: source,
-                title: "New chat",
+                title: source == "mochi" ? "小猫" : "New chat",
                 skin: face(for: source),
                 created: now
             )

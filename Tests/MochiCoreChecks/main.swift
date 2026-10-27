@@ -300,6 +300,12 @@ func DockPrefDefaultsToRight() {
     check(junk.dock == "left")
 }
 
+func SettingsTabsStayCircleButtons() {
+    check(AppConfig.settingsTabs == ["Dock", "Looks", "Colors", "Sound", "Links"])
+    check(AppConfig.settingsTabCircle == 36)
+    check(DialogueSlotStore.seedSources == ["cursor", "grok-bot", "mochi"])
+}
+
 func EmptySlotFileSeedsThreeFaces() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-slots-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -308,6 +314,7 @@ func EmptySlotFileSeedsThreeFaces() throws {
     check(store.slots.count == 3)
     check(store.slots.map(\.source) == DialogueSlotStore.seedSources)
     check(Set(store.slots.map(\.source)) == Set(["cursor", "grok-bot", "mochi"]))
+    check(store.slots.first { $0.source == "mochi" }?.title == "小猫")
     check(store.slots.allSatisfy { $0.skin == $0.source })
     check(store.slots.allSatisfy { DialogueSlotStore.skins.contains($0.skin) })
     check(store.selected == store.slots[0].id)
@@ -445,6 +452,7 @@ try ReplyWriterOnlyAllowsPermissionActions()
 try TaskReaderKeepsSource()
 AgentLaunchFindsInstalledAppsAndCodexFallback()
 DockPrefDefaultsToRight()
+SettingsTabsStayCircleButtons()
 try EmptySlotFileSeedsThreeFaces()
 MergeKeepsSkinAndLeavesSlotsWhenTasksLeave()
 CreateSlotAppendsAFaceWithoutATaskFile()

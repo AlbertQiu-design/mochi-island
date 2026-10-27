@@ -405,11 +405,16 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
         let screenMouse = NSEvent.mouseLocation
         if settings.isVisible {
             settings.panel.ignoresMouseEvents = false
-            if settings.panel.frame.insetBy(dx: -6, dy: -6).contains(screenMouse) {
+            // Keep the fullscreen host click-through except on the capsule.
+            // Settings is a higher-level panel, not a child of this window.
+            if capsule.panel.frame.insetBy(dx: -6, dy: -6).contains(screenMouse) {
                 panel.ignoresMouseEvents = false
-                return
+            } else {
+                panel.ignoresMouseEvents = true
             }
+            return
         }
+        settings.panel.ignoresMouseEvents = true
         if capsule.panel.frame.insetBy(dx: -6, dy: -6).contains(screenMouse) {
             panel.ignoresMouseEvents = false
             return

@@ -7,6 +7,8 @@ public enum AppConfig {
     public static let fedTaskLimit = 500
     public static let doneKeep: Double = 4
     public static let liveKeep: Double = 30 * 60
+    public static let settingsTabs = ["Dock", "Looks", "Colors", "Sound", "Links"]
+    public static let settingsTabCircle: Double = 36
 
     public static var supportDirectory: URL {
         FileManager.default.homeDirectoryForCurrentUser

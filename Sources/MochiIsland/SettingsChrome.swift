@@ -10,13 +10,11 @@ enum SettingsTab: Int, Hashable, CaseIterable {
     case links
 
     var title: String {
-        switch self {
-        case .dock: return "Dock"
-        case .looks: return "Looks"
-        case .colors: return "Colors"
-        case .sound: return "Sound"
-        case .links: return "Links"
+        let titles = AppConfig.settingsTabs
+        if rawValue >= 0, rawValue < titles.count {
+            return titles[rawValue]
         }
+        return titles[0]
     }
 }
 
@@ -30,10 +28,11 @@ final class SettingsChrome: NSObject {
         "#efd36a", "#7dcb8d", "#3d6ea8", "#f4b6c2"
     ]
     static let sounds = ["boop", "chirp", "mew", "pop", "twinkle"]
+    static let tabCircle: CGFloat = AppConfig.settingsTabCircle
 
     let panel: CapsulePanel
     private let model: SettingsModel
-    private let hosting: NSHostingView<SettingsRoot>
+    private let hosting: HitHostingView<SettingsRoot>
     private weak var host: NSWindow?
 
     var onPrefs: (([String: Any]) -> Void)? {
@@ -60,6 +59,7 @@ final class SettingsChrome: NSObject {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.hidesOnDeactivate = false
+        panel.isFloatingPanel = true
         panel.isMovable = false
         panel.ignoresMouseEvents = false
         panel.becomesKeyOnlyIfNeeded = false
@@ -67,8 +67,9 @@ final class SettingsChrome: NSObject {
         panel.isRestorable = false
         panel.animationBehavior = .none
         panel.title = "Mochi Settings"
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 2)
 
-        let hosting = NSHostingView(rootView: SettingsRoot(model: model))
+        let hosting = HitHostingView(rootView: SettingsRoot(model: model))
         hosting.sizingOptions = []
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = NSColor.clear.cgColor
@@ -86,9 +87,17 @@ final class SettingsChrome: NSObject {
             current.removeChildWindow(panel)
         }
         self.host = host
-        panel.level = NSWindow.Level(rawValue: host.level.rawValue + 1)
-        panel.collectionBehavior = host.collectionBehavior
-        host.addChildWindow(panel, ordered: .above)
+        // Never a child of the fullscreen host. Child windows inherit the
+        // host's click-through, and WKWebView then eats the tab bar.
+        if host.childWindows?.contains(panel) == true {
+            host.removeChildWindow(panel)
+        }
+        panel.level = NSWindow.Level(rawValue: max(host.level.rawValue, NSWindow.Level.floating.rawValue) + 2)
+        panel.collectionBehavior = [
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .stationary
+        ]
         hide()
     }
 
@@ -109,11 +118,13 @@ final class SettingsChrome: NSObject {
         panel.ignoresMouseEvents = false
         panel.alphaValue = 1
         panel.orderFrontRegardless()
-        panel.makeKey()
+        panel.makeKeyAndOrderFront(nil)
+        panel.makeFirstResponder(hosting)
     }
 
     func hide() {
         panel.alphaValue = 0
+        panel.ignoresMouseEvents = true
         panel.orderOut(nil)
     }
 
@@ -235,12 +246,9 @@ struct SettingsRoot: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(width: SettingsChrome.width, height: SettingsChrome.height)
-        .background {
-            Color.clear
-                .glassEffect(.clear, in: .rect(cornerRadius: 28))
-                .allowsHitTesting(false)
-        }
         .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .glassEffect(.clear, in: .rect(cornerRadius: 28))
+        .materialActiveAppearance(.active)
     }
 
     private var settingsTabBar: some View {
@@ -250,36 +258,39 @@ struct SettingsRoot: View {
                     Divider()
                         .frame(height: 12)
                 }
-                Button {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                        model.tab = item
-                    }
-                } label: {
-                    Text(item.title)
-                        .font(.system(size: 13, weight: .medium))
-                        .frame(minWidth: 36, minHeight: 28)
-                        .padding(.horizontal, 8)
-                        .background {
-                            if model.tab == item {
-                                Circle()
-                                    .frame(width: 28, height: 28)
-                                    .glassEffect(.clear, in: .circle)
-                                    .matchedGeometryEffect(id: "settings-tab", in: tabNS)
-                            }
-                        }
-                }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-                .accessibilityLabel(item.title)
-                .accessibilityAddTraits(model.tab == item ? .isSelected : [])
+                tabButton(item)
             }
         }
         .padding(4)
-        .background {
-            Color.clear
-                .glassEffect(.clear, in: .capsule)
-                .allowsHitTesting(false)
+        .glassEffect(.clear, in: .capsule)
+        .materialActiveAppearance(.active)
+    }
+
+    private func tabButton(_ item: SettingsTab) -> some View {
+        let selected = model.tab == item
+        return Button {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                model.tab = item
+            }
+        } label: {
+            Text(item.title)
+                .font(.system(size: 13, weight: .medium))
+                .frame(minWidth: SettingsChrome.tabCircle, minHeight: SettingsChrome.tabCircle)
+                .padding(.horizontal, 6)
+                .background {
+                    if selected {
+                        Circle()
+                            .fill(.white.opacity(0.25))
+                            .frame(width: SettingsChrome.tabCircle, height: SettingsChrome.tabCircle)
+                            .matchedGeometryEffect(id: "settings-tab", in: tabNS)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(item.title)
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 
     private var dockPane: some View {
