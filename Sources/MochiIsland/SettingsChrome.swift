@@ -204,28 +204,34 @@ struct SettingsRoot: View {
     @ObservedObject var model: SettingsModel
 
     var body: some View {
-        TabView(selection: $model.tab) {
-            Tab("Dock", systemImage: "dock.rectangle", value: SettingsTab.dock) {
-                dockPane
+        VStack(spacing: CapsuleChrome.gap) {
+            Picker("Settings", selection: $model.tab) {
+                Label("Dock", systemImage: "dock.rectangle").tag(SettingsTab.dock)
+                Label("Looks", systemImage: "pawprint.fill").tag(SettingsTab.looks)
+                Label("Colors", systemImage: "paintpalette.fill").tag(SettingsTab.colors)
+                Label("Sound", systemImage: "speaker.wave.2.fill").tag(SettingsTab.sound)
+                Label("Links", systemImage: "link").tag(SettingsTab.links)
             }
-            Tab("Looks", systemImage: "pawprint.fill", value: SettingsTab.looks) {
-                looksPane
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, CapsuleChrome.pad)
+            .padding(.top, CapsuleChrome.pad)
+
+            Group {
+                switch model.tab {
+                case .dock: dockPane
+                case .looks: looksPane
+                case .colors: colorsPane
+                case .sound: soundPane
+                case .links: linksPane
+                }
             }
-            Tab("Colors", systemImage: "paintpalette.fill", value: SettingsTab.colors) {
-                colorsPane
-            }
-            Tab("Sound", systemImage: "speaker.wave.2.fill", value: SettingsTab.sound) {
-                soundPane
-            }
-            Tab("Links", systemImage: "link", value: SettingsTab.links) {
-                linksPane
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .tint(.accentColor)
         .frame(width: SettingsChrome.width, height: SettingsChrome.height)
         .glassEffect(
             .clear,
-            in: .rect(cornerRadius: 16)
+            in: .rect(cornerRadius: CapsuleChrome.corner)
         )
     }
 
