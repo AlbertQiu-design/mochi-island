@@ -85,6 +85,10 @@ final class SettingsChrome: NSObject {
         model.apply(prefs: prefs, link: link)
     }
 
+    func select(_ tab: SettingsTab) {
+        model.tab = tab
+    }
+
     func toggle(capsule: NSRect, dock: String, host: NSWindow) {
         if isVisible {
             hide()

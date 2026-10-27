@@ -279,6 +279,14 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
         settings.toggle(capsule: capsule.panel.frame, dock: session.currentPrefs.dock, host: panel)
     }
 
+    func revealSettings(tab: SettingsTab = .dock) {
+        settings.load(prefs: session.currentPrefs, link: session.linkPayload(action: "status", acknowledged: false))
+        settings.select(tab)
+        if !settings.isVisible {
+            settings.toggle(capsule: capsule.panel.frame, dock: session.currentPrefs.dock, host: panel)
+        }
+    }
+
     private func refreshCapsule() {
         let state = session.statePayload()
         let tasks = session.tasksPayload()
@@ -550,6 +558,22 @@ final class Runtime: NSObject, NSApplicationDelegate {
             NSApp.applicationIconImage = icon
         }
         island.start()
+        if CommandLine.arguments.contains("--show-settings") {
+            let raw = CommandLine.arguments
+                .first(where: { $0.hasPrefix("--settings-tab=") })?
+                .split(separator: "=", maxSplits: 1)
+                .last
+                .map(String.init) ?? "dock"
+            let tab: SettingsTab
+            switch raw {
+            case "looks": tab = .looks
+            case "colors": tab = .colors
+            case "sound": tab = .sound
+            case "links": tab = .links
+            default: tab = .dock
+            }
+            island.revealSettings(tab: tab)
+        }
     }
 
     private static func claimSingleInstance() -> Bool {

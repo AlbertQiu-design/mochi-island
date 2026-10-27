@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Native sidebar capsule. Chrome is official SwiftUI Liquid Glass:
 /// `.glassEffect(.clear, in: .rect(cornerRadius: 28))`.
-/// Slot faces stay Designer art. Popup and settings stay in the web view.
+/// Slot faces stay Designer art. Popup stays web. Settings is native TabView.
 @MainActor
 final class CapsuleChrome: NSObject {
     static let width: CGFloat = 56

@@ -44,8 +44,7 @@ html, body {
   background: transparent;
 }
 
-.popup,
-.settings-card {
+.popup {
   position: fixed;
   background: var(--shell);
   border: 0;
@@ -62,8 +61,7 @@ html, body {
   min-width: 148px;
 }
 
-.source-menu button,
-.dock-picks button {
+.source-menu button {
   appearance: none;
   height: 32px;
   border: 0;
@@ -78,8 +76,7 @@ html, body {
   cursor: pointer;
 }
 
-.source-menu button:hover,
-.dock-picks button.active {
+.source-menu button:hover {
   background: rgba(255, 255, 255, 0.12);
 }
 
@@ -245,152 +242,8 @@ html, body {
   cursor: pointer;
 }
 
-.settings-card {
-  z-index: 8;
-  display: flex;
-  width: 540px;
-  max-width: calc(100vw - 96px);
-  min-height: 280px;
-  max-height: 420px;
-  padding: 0;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
-
-body.settings-open .settings-card {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-}
-
-.settings-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 132px;
-  flex-shrink: 0;
-  padding: 8px;
-  border-right: 1px solid var(--shell-line);
-}
-
-.settings-nav button {
-  appearance: none;
-  border: 0;
-  width: 100%;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--shell-text);
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.settings-nav button.active {
-  background: rgba(255, 255, 255, 0.12);
-  font-weight: 600;
-}
-
-.settings-body {
-  flex: 1;
-  min-width: 0;
-  overflow: auto;
-  padding: 8px 12px 10px;
-}
-
-.settings-pane { display: none; }
-.settings-pane.active { display: grid; gap: 8px; }
-
-.nudge-title { margin: 0; font-size: 13px; color: var(--shell-text); }
-.settings-pane .nudge-title:not(:first-child) { margin-top: 10px; }
-
-.dock-picks, .sound-picks { display: flex; flex-wrap: wrap; gap: 6px; }
-
-.sound-picks button,
-.settings-pane > button {
-  appearance: none;
-  border: 1px solid color-mix(in srgb, var(--bubble-stroke) 55%, transparent);
-  height: 22px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--bubble-fill) 70%, transparent);
-  color: var(--ink);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.sound-picks button.active,
-#cursor-link-btn.connected,
-.settings-pane > button.connected { background: #7dcb8d; }
-
-.cursor-link-status, .cursor-privacy, .cursor-scan {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--shell-muted);
-  font-family: "PingFang SC", "PingFang HK", sans-serif;
-}
-
-.look-picks {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.look-picks button {
-  appearance: none;
-  display: grid;
-  place-items: center;
-  aspect-ratio: 1;
-  padding: 8px;
-  border: 1px solid var(--shell-line);
-  border-radius: 16px;
-  background: transparent;
-  color: var(--shell-text);
-  cursor: pointer;
-}
-
-.look-picks button.active { background: #fff3b0; border-color: #2c2926; color: var(--ink); }
-.look-picks button.placeholder { cursor: default; font-size: 22px; font-weight: 700; }
-.look-picks img { width: 86%; height: 86%; object-fit: contain; pointer-events: none; }
-
-.settings-pane label {
-  display: grid;
-  grid-template-columns: 48px 1fr;
-  gap: 6px;
-  align-items: center;
-  font-size: 12px;
-  color: var(--shell-text);
-}
-
-.settings-pane input[type="text"] {
-  width: 100%;
-  height: 28px;
-  border: 1px solid var(--shell-line);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--shell-text);
-  font: inherit;
-  font-size: 12px;
-  padding: 0 6px;
-}
-
-.swatches { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 4px 54px; }
-.swatches button {
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: 1px solid var(--card-stroke);
-  border-radius: 50%;
-  cursor: pointer;
-}
-
 .hidden { display: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
-  .popup, .settings-card, .source-menu { transition: none; }
+  .popup, .source-menu { transition: none; }
 }
