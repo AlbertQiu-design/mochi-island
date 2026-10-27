@@ -3,7 +3,10 @@ import PackageDescription
 
 let package = Package(
     name: "MochiIsland",
-    platforms: [.macOS(.v26)],
+    platforms: [
+        // Mac notch pet. Do not add iOS — Xcode would then offer iPhone destinations.
+        .macOS(.v26)
+    ],
     products: [
         .executable(name: "MochiIsland", targets: ["MochiIsland"]),
         .executable(name: "MochiHookCLI", targets: ["MochiHookCLI"]),

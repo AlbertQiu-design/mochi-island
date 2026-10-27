@@ -274,6 +274,13 @@ func AgentLaunchFindsInstalledAppsAndCodexFallback() {
         check(cat.appPath == nil)
         check(cat.url == nil)
         check(cat.note?.contains("小猫") == true)
+        let home = AppConfig.homeDirectory
+        check(home.isFileURL)
+        check(!home.path.isEmpty)
+        check(AppConfig.cursorDirectory.path.hasPrefix(home.path))
+        check(AppConfig.supportDirectory.path.contains(AppConfig.bundleID))
+        let fromHome = AgentLaunch.plan(source: "cursor", home: home) { _ in false }
+        check(fromHome.url == "https://cursor.com")
     }
 
 struct SplitMix64: RandomNumberGenerator {
@@ -432,7 +439,7 @@ func NewWaitSelectsOnlyAfterTheFirstSnapshot() {
 
 func LiveHooksFixWhenAsked() {
         guard let binary = ProcessInfo.processInfo.environment["MOCHI_FIX_LIVE_HOOKS"], !binary.isEmpty else { return }
-        let cursor = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cursor", isDirectory: true)
+        let cursor = AppConfig.cursorDirectory
         let result = HookInstaller.install(
             hooksURL: cursor.appendingPathComponent("hooks.json"),
             binaryURL: URL(fileURLWithPath: binary),

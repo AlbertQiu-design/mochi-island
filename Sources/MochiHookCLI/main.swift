@@ -6,8 +6,16 @@ let replyURL = AppPaths.cursor.appendingPathComponent("mochi-island-reply.json")
 let permissionTimeout: TimeInterval = 280
 
 enum AppPaths {
+    static var homeDirectory: URL {
+        #if os(macOS)
+        FileManager.default.homeDirectoryForCurrentUser
+        #else
+        URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        #endif
+    }
+
     static var cursor: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cursor", isDirectory: true)
+        homeDirectory.appendingPathComponent(".cursor", isDirectory: true)
     }
 }
 

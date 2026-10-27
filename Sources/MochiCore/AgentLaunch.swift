@@ -30,7 +30,7 @@ public enum AgentLaunch {
     /// Codex.app is often absent. Callers open `url` and can show `note` in that case.
     public static func plan(
         source: String?,
-        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        home: URL = AppConfig.homeDirectory,
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) -> AgentLaunchPlan {
         let key = normalize(source)

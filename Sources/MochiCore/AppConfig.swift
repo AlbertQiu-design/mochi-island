@@ -8,14 +8,22 @@ public enum AppConfig {
     public static let doneKeep: Double = 4
     public static let liveKeep: Double = 30 * 60
 
-    public static var supportDirectory: URL {
+    public static var homeDirectory: URL {
+        #if os(macOS)
         FileManager.default.homeDirectoryForCurrentUser
+        #else
+        URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        #endif
+    }
+
+    public static var supportDirectory: URL {
+        homeDirectory
             .appendingPathComponent("Library/Application Support", isDirectory: true)
             .appendingPathComponent(bundleID, isDirectory: true)
     }
 
     public static var cursorDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        homeDirectory
             .appendingPathComponent(".cursor", isDirectory: true)
     }
 }
