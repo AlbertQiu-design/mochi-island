@@ -569,7 +569,12 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     }
 
     private static func jsonString(_ object: Any) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: object),
+        if let text = object as? String {
+            let data = (try? JSONEncoder().encode(text)) ?? Data()
+            return String(data: data, encoding: .utf8) ?? "\"\""
+        }
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object),
               let text = String(data: data, encoding: .utf8) else {
             return "{}"
         }
