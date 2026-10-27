@@ -121,6 +121,9 @@ final class AppSession {
     func openAgent(source: String, taskID: String) -> [String: Any] {
         let plan = AgentLaunch.plan(source: source)
         let normalized = AgentLaunch.normalize(source)
+        if normalized == "mochi" {
+            return ["ok": true, "opened": false, "source": normalized, "id": taskID]
+        }
         if let path = plan.appPath {
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
             return ["ok": true, "opened": true, "source": normalized, "app": path, "id": taskID]

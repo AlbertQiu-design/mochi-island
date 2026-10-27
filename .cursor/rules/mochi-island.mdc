@@ -16,7 +16,7 @@ Writable files: `~/Library/Application Support/com.mochiisland.mac/` or `~/.curs
 
 Do not scan agent transcripts unless the user enables that switch, and do not persist prompt or command text. Do not click Cursor with AppleScript or Accessibility. Do not start agents with the Cursor SDK. Non-permission choices open Cursor.
 
-UI: 72px capsule docked right by default (settings switches left), 56px blob slots, 48px `+` (Cursor / Codex / Grok Bot), 28px gear. Popup is 280px and opens inward; top bar 44px; summary max-height 280px. Only `.speech-option` confirms. Blank popup and title call `openAgent`. Slot skins are `blob-0`–`blob-7`, not the mood cats. Chinese uses PingFang SC. One Mochi look set in settings, 16 slots. Eight color swatches plus hex. Never use `<input type="color">`.
+UI: 56px black capsule docked right by default (settings switches left), 36px source faces (Cursor / Grok Bot / 小猫), 36px `+`, 24px gear. Popup is 200px and opens inward. Only `.speech-option` confirms. Blank popup and title call `openAgent`. Slot faces are bundled pet SVGs/PNG, not CSS blobs or the mood-cat look set. Chinese uses PingFang SC. One Mochi look set in settings, 16 slots. Eight color swatches plus hex. Never use `<input type="color">`.
 
 Bundle ID `com.mochiisland.mac` and the minimum system version stay on macOS 26 in both `island/Info.plist` and `Package.swift`. Do not disable ATS. Do not ship an ad-hoc signature. Changes to `MochiCore` or `AppSession` update `Tests/MochiCoreChecks/main.swift`.
 

@@ -27,11 +27,8 @@ public struct DialogueSlot: Codable, Equatable {
 }
 
 public struct DialogueSlotStore: Codable, Equatable {
-    public static let skins = [
-        "blob-0", "blob-1", "blob-2", "blob-3",
-        "blob-4", "blob-5", "blob-6", "blob-7"
-    ]
-    public static let seedSources = ["cursor", "codex", "grok-bot"]
+    public static let skins = ["cursor", "grok-bot", "mochi", "codex"]
+    public static let seedSources = ["cursor", "grok-bot", "mochi"]
 
     public var selected: String
     public var slots: [DialogueSlot]
@@ -41,36 +38,30 @@ public struct DialogueSlotStore: Codable, Equatable {
         self.slots = slots
     }
 
-    /// FNV-style mix that stays in the same residue class in Swift and the page.
-    public static func stableSkin(for id: String) -> String {
-        var hash = 0
-        for byte in id.utf8 {
-            hash = (hash * 33 + Int(byte)) % 997
+    public static func face(for source: String) -> String {
+        switch AgentLaunch.normalize(source) {
+        case "grok-bot": return "grok-bot"
+        case "mochi": return "mochi"
+        case "codex": return "codex"
+        default: return "cursor"
         }
-        let index = (hash % skins.count + skins.count) % skins.count
-        return skins[index]
     }
 
-    public static func randomSkin(excluding: Set<String>, rng: inout some RandomNumberGenerator) -> String {
-        var pool = skins.filter { !excluding.contains($0) }
-        if pool.isEmpty { pool = skins }
-        let index = Int.random(in: 0..<pool.count, using: &rng)
-        return pool[index]
+    /// Kept for older callers; face now follows the source, not a hash of the id.
+    public static func stableSkin(for id: String) -> String {
+        face(for: id.hasPrefix("seed-") ? String(id.dropFirst(5)) : "cursor")
     }
 
     public static func seed(now: Double, rng: inout some RandomNumberGenerator) -> DialogueSlotStore {
-        var used: Set<String> = []
-        var slots: [DialogueSlot] = []
-        for source in seedSources {
-            let skin = randomSkin(excluding: used, rng: &rng)
-            used.insert(skin)
-            slots.append(DialogueSlot(
+        _ = rng.next()
+        let slots = seedSources.map { source in
+            DialogueSlot(
                 id: "seed-\(source)",
                 source: source,
                 title: "New chat",
-                skin: skin,
+                skin: face(for: source),
                 created: now
-            ))
+            )
         }
         return DialogueSlotStore(selected: slots[0].id, slots: slots)
     }
@@ -80,9 +71,7 @@ public struct DialogueSlotStore: Codable, Equatable {
         next.slots = next.slots.map { slot in
             var copy = slot
             copy.source = AgentLaunch.normalize(copy.source)
-            if !Self.skins.contains(copy.skin) {
-                copy.skin = Self.stableSkin(for: copy.id)
-            }
+            copy.skin = Self.face(for: copy.source)
             if copy.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 copy.title = "New chat"
             }
@@ -94,7 +83,7 @@ public struct DialogueSlotStore: Codable, Equatable {
         return next
     }
 
-    /// Adds a slot for each task id that is not stored yet. Existing skins stay put.
+    /// Adds a slot for each task id that is not stored yet. Face follows the source.
     public func merged(with tasks: [CursorTask]) -> DialogueSlotStore {
         var next = normalized()
         var indexByID: [String: Int] = [:]
@@ -105,17 +94,19 @@ public struct DialogueSlotStore: Codable, Equatable {
             let title = task.title.trimmingCharacters(in: .whitespacesAndNewlines)
             if let index = indexByID[task.id] {
                 next.slots[index].source = AgentLaunch.normalize(task.source)
+                next.slots[index].skin = Self.face(for: next.slots[index].source)
                 if !title.isEmpty {
                     next.slots[index].title = title
                 }
                 continue
             }
             let created = task.updated > 0 ? task.updated : 0
+            let source = AgentLaunch.normalize(task.source)
             let slot = DialogueSlot(
                 id: task.id,
-                source: AgentLaunch.normalize(task.source),
+                source: source,
                 title: title.isEmpty ? "New chat" : title,
-                skin: Self.stableSkin(for: task.id),
+                skin: Self.face(for: source),
                 created: created
             )
             indexByID[task.id] = next.slots.count
@@ -129,12 +120,13 @@ public struct DialogueSlotStore: Codable, Equatable {
 
     public func created(source: String, now: Double, rng: inout some RandomNumberGenerator) -> (DialogueSlotStore, DialogueSlot) {
         var next = normalized()
-        let used = Set(next.slots.map(\.skin))
+        _ = rng.next()
+        let source = AgentLaunch.normalize(source)
         let slot = DialogueSlot(
             id: "slot-\(UUID().uuidString.lowercased())",
-            source: AgentLaunch.normalize(source),
+            source: source,
             title: "New chat",
-            skin: Self.randomSkin(excluding: used, rng: &rng),
+            skin: Self.face(for: source),
             created: now
         )
         next.slots.append(slot)
