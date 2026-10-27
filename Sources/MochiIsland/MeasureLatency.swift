@@ -477,7 +477,7 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
                     && whole("faceH") == 36
                     && whole("slotGap") == 8
                     && whole("addW") == 36
-                    && whole("gearW") == 24
+                    && whole("gearW") == 36
                     && whole("menuCount") == 3
                     && flag("withinHalf")
                     && flag("centered")

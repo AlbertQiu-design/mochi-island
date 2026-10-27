@@ -68,7 +68,7 @@ Tasks in `~/.cursor/mochi-island-tasks.json` share one schema and include `sourc
 
 ## UI
 
-Main path: a 56px black (#111) capsule docked to the right (switchable to the left), 8px from the screen edge. Slots are 36px source faces (Cursor, Grok Bot, 小猫) inside the 56px shell, with an 8px gap. The bottom holds a 36px `+` and a 24px settings icon. `+` opens Cursor, Grok Bot, and 小猫. The popup is 200px wide and opens inward. Only `.speech-option` confirms a choice. Blank popup space and the title call `openAgent`.
+Main path: a 56px black (#111) capsule docked to the right (switchable to the left), 8px from the screen edge. Slots are 36px source faces (Cursor, Grok Bot, 小猫) inside the 56px shell, with an 8px gap. The bottom holds a 36px `+` and a 36px settings icon. `+` opens Cursor, Grok Bot, and 小猫. The popup is 200px wide and opens inward. Only `.speech-option` confirms a choice. Blank popup space and the title call `openAgent`.
 
 Dialogue slots live in `dialogue-slots.json` under Application Support. Slot faces are bundled `web/pets/cursor-*.svg` (cursor-v2), `web/pets/grok-*.svg` (grok-v9), and `web/pets/kitten-*.svg` (kitten-v1). All three swap wake/work/wait/done from task status. The capsule does not draw the mood-cat look set.
 
