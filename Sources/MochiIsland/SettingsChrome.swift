@@ -2,12 +2,22 @@ import AppKit
 import MochiCore
 import SwiftUI
 
-enum SettingsTab: Int, Hashable {
+enum SettingsTab: Int, Hashable, CaseIterable {
     case dock
     case looks
     case colors
     case sound
     case links
+
+    var title: String {
+        switch self {
+        case .dock: return "Dock"
+        case .looks: return "Looks"
+        case .colors: return "Colors"
+        case .sound: return "Sound"
+        case .links: return "Links"
+        }
+    }
 }
 
 @MainActor
@@ -202,20 +212,13 @@ final class SettingsModel: ObservableObject {
 
 struct SettingsRoot: View {
     @ObservedObject var model: SettingsModel
+    @Namespace private var tabNS
 
     var body: some View {
         VStack(spacing: CapsuleChrome.gap) {
-            Picker("Settings", selection: $model.tab) {
-                Label("Dock", systemImage: "dock.rectangle").tag(SettingsTab.dock)
-                Label("Looks", systemImage: "pawprint.fill").tag(SettingsTab.looks)
-                Label("Colors", systemImage: "paintpalette.fill").tag(SettingsTab.colors)
-                Label("Sound", systemImage: "speaker.wave.2.fill").tag(SettingsTab.sound)
-                Label("Links", systemImage: "link").tag(SettingsTab.links)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal, CapsuleChrome.pad)
-            .padding(.top, CapsuleChrome.pad)
+            settingsTabBar
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
 
             Group {
                 switch model.tab {
@@ -230,6 +233,39 @@ struct SettingsRoot: View {
         }
         .frame(width: SettingsChrome.width, height: SettingsChrome.height)
         .glassEffect(.clear, in: .rect(cornerRadius: 28))
+    }
+
+    private var settingsTabBar: some View {
+        HStack(spacing: 0) {
+            ForEach(SettingsTab.allCases, id: \.self) { item in
+                if item != SettingsTab.allCases.first {
+                    Divider()
+                        .frame(height: 12)
+                }
+                Button {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                        model.tab = item
+                    }
+                } label: {
+                    Text(item.title)
+                        .font(.system(size: 13, weight: .medium))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background {
+                            if model.tab == item {
+                                Capsule()
+                                    .fill(.quaternary)
+                                    .matchedGeometryEffect(id: "settings-tab", in: tabNS)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(item.title)
+                .accessibilityAddTraits(model.tab == item ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        .glassEffect(.clear, in: .capsule)
     }
 
     private var dockPane: some View {
