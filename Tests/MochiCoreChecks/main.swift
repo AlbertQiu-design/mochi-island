@@ -300,6 +300,12 @@ func DockPrefDefaultsToRight() {
     check(junk.dock == "left")
 }
 
+func SettingsTabsStayCircleButtons() {
+    check(AppConfig.settingsTabs == ["Dock", "Looks", "Colors", "Sound", "Links"])
+    check(AppConfig.settingsTabCircle == 36)
+    check(DialogueSlotStore.seedSources == ["cursor", "grok-bot", "mochi"])
+}
+
 func EmptySlotFileSeedsThreeFaces() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-slots-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -308,6 +314,7 @@ func EmptySlotFileSeedsThreeFaces() throws {
     check(store.slots.count == 3)
     check(store.slots.map(\.source) == DialogueSlotStore.seedSources)
     check(Set(store.slots.map(\.source)) == Set(["cursor", "grok-bot", "mochi"]))
+    check(store.slots.first { $0.source == "mochi" }?.title == "小猫")
     check(store.slots.allSatisfy { $0.skin == $0.source })
     check(store.slots.allSatisfy { DialogueSlotStore.skins.contains($0.skin) })
     check(store.selected == store.slots[0].id)
@@ -358,6 +365,33 @@ func CreateSlotAppendsAFaceWithoutATaskFile() {
     let cat = store.created(source: "小猫", now: 21, rng: &catRNG).1
     check(cat.source == "mochi")
     check(cat.skin == "mochi")
+}
+
+func EnsuringSeedAddsMissingKitten() {
+    let store = DialogueSlotStore(
+        selected: "seed-cursor",
+        slots: [
+            DialogueSlot(id: "seed-cursor", source: "cursor", title: "Cursor", skin: "cursor", created: 1),
+            DialogueSlot(id: "seed-grok-bot", source: "grok-bot", title: "Grok", skin: "grok-bot", created: 1)
+        ]
+    )
+    check(!store.slots.contains { $0.source == "mochi" })
+    let filled = store.ensuringSeedSources()
+    check(filled.slots.contains { $0.source == "mochi" && $0.id == "seed-mochi" })
+    check(filled.slots.contains { $0.source == "cursor" })
+    check(filled.slots.contains { $0.source == "grok-bot" })
+    check(filled.slots.first { $0.source == "mochi" }?.title == "小猫")
+}
+
+func SelectingKeepsOnlyKnownIds() {
+    var rng = SplitMix64(seed: 5)
+    let store = DialogueSlotStore.seed(now: 1, rng: &rng)
+    let picked = store.slots[1].id
+    let next = store.selecting(picked)
+    check(next.selected == picked)
+    check(next.slots == store.slots)
+    let junk = store.selecting("missing")
+    check(junk.selected == store.selected)
 }
 
 func NewWaitSelectsOnlyAfterTheFirstSnapshot() {
@@ -418,9 +452,12 @@ try ReplyWriterOnlyAllowsPermissionActions()
 try TaskReaderKeepsSource()
 AgentLaunchFindsInstalledAppsAndCodexFallback()
 DockPrefDefaultsToRight()
+SettingsTabsStayCircleButtons()
 try EmptySlotFileSeedsThreeFaces()
 MergeKeepsSkinAndLeavesSlotsWhenTasksLeave()
 CreateSlotAppendsAFaceWithoutATaskFile()
+EnsuringSeedAddsMissingKitten()
+SelectingKeepsOnlyKnownIds()
 NewWaitSelectsOnlyAfterTheFirstSnapshot()
 LiveHooksFixWhenAsked()
 print("MochiCore checks passed")

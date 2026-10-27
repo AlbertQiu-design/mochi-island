@@ -24,7 +24,7 @@ final class GlassPlate {
     init(panel: NSPanel) {
         self.panel = panel
         let effect = NSGlassEffectView(frame: .zero)
-        effect.style = .regular
+        effect.style = .clear
         effect.tintColor = nil
         if effect.responds(to: Selector(("setEffectIsInteractive:"))) {
             effect.setValue(true, forKey: "effectIsInteractive")
@@ -116,11 +116,15 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     private var hotRects: [NSRect] = []
     private var localMonitor: Any?
     private var globalMonitor: Any?
+    private let capsule = CapsuleChrome()
+    private let settings = SettingsChrome()
 
     func start() {
         configurePanel()
         configureWebView()
         applyFrame()
+        configureCapsule()
+        configureSettings()
         startMousePassthrough()
         panel.orderFrontRegardless()
         loadPage()
@@ -187,6 +191,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
         case "savePrefs":
             session.replacePrefs(body)
             retintGlass()
+            refreshCapsule()
         case "hotRects":
             hotRects = Self.parseRects(body["rects"], windowHeight: panel.frame.height)
             syncMousePassthrough()
@@ -214,10 +219,93 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
             session.setScanTranscripts(body["enabled"] as? Bool ?? false)
             reply(requestID, ["ok": true, "scanTranscripts": session.currentPrefs.scanTranscripts])
         case "createSlot":
-            reply(requestID, session.createSlot(source: body["source"] as? String ?? ""))
+            let created = session.createSlot(source: body["source"] as? String ?? "")
+            refreshCapsule()
+            reply(requestID, created)
         default:
             break
         }
+    }
+
+    private func configureCapsule() {
+        capsule.attach(to: panel)
+        capsule.onSelect = { [weak self] id, open in
+            guard let self else { return }
+            _ = self.session.selectSlot(id)
+            self.refreshCapsule()
+            self.tellPage(
+                "window.applyCapsuleEvent && window.applyCapsuleEvent({kind:'select',id:\(Self.jsonString(id)),open:\(open ? "true" : "false")});"
+            )
+        }
+        capsule.onCreate = { [weak self] source in
+            guard let self else { return }
+            let created = self.session.createSlot(source: source)
+            self.refreshCapsule()
+            self.tellPage(
+                "window.applyCapsuleEvent && window.applyCapsuleEvent({kind:'created',selected:\(Self.jsonString(created["selected"] as? String ?? "")),slots:\(Self.jsonString(created["slots"] ?? []))});"
+            )
+        }
+        capsule.onSettings = { [weak self] in
+            self?.toggleSettings()
+        }
+        refreshCapsule()
+    }
+
+    private func configureSettings() {
+        settings.attach(to: panel)
+        settings.onPrefs = { [weak self] json in
+            guard let self else { return }
+            self.session.replacePrefs(json)
+            self.refreshCapsule()
+            self.injectPageState()
+            self.settings.reposition(
+                capsule: self.capsule.panel.frame,
+                dock: self.session.currentPrefs.dock,
+                host: self.panel
+            )
+        }
+        settings.onLink = { [weak self] action, acknowledged in
+            guard let self else { return [:] }
+            return self.session.linkPayload(action: action, acknowledged: acknowledged)
+        }
+        settings.onScan = { [weak self] enabled in
+            self?.session.setScanTranscripts(enabled)
+        }
+        settings.load(prefs: session.currentPrefs, link: session.linkPayload(action: "status", acknowledged: false))
+    }
+
+    private func toggleSettings() {
+        settings.load(prefs: session.currentPrefs, link: session.linkPayload(action: "status", acknowledged: false))
+        settings.toggle(capsule: capsule.panel.frame, dock: session.currentPrefs.dock, host: panel)
+    }
+
+    func revealSettings(tab: SettingsTab = .dock) {
+        settings.load(prefs: session.currentPrefs, link: session.linkPayload(action: "status", acknowledged: false))
+        settings.select(tab)
+        if !settings.isVisible {
+            settings.toggle(capsule: capsule.panel.frame, dock: session.currentPrefs.dock, host: panel)
+        }
+    }
+
+    private func refreshCapsule() {
+        let state = session.statePayload()
+        let tasks = session.tasksPayload()
+        capsule.sync(
+            slots: state["slots"] as? [[String: Any]] ?? [],
+            selected: state["selected"] as? String ?? "",
+            tasks: tasks,
+            dock: session.currentPrefs.dock
+        )
+        publishCapsule()
+    }
+
+    private func publishCapsule() {
+        let payload = Self.jsonString(capsule.chromePayload(in: panel))
+        tellPage("window.applyCapsuleChrome && window.applyCapsuleChrome(\(payload));")
+    }
+
+    private func tellPage(_ script: String) {
+        webView?.evaluateJavaScript(script, completionHandler: nil)
     }
 
     private func reply(_ id: String, _ object: Any) {
@@ -256,6 +344,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
             "window.pushTasks && window.pushTasks(\(tasks), \(state));",
             completionHandler: nil
         )
+        refreshCapsule()
     }
 
     private func injectPageState() {
@@ -265,6 +354,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
             "window.applyScreenLayout && window.applyScreenLayout(\(layout)); window.applyPrefs && window.applyPrefs(\(payload));",
             completionHandler: nil
         )
+        refreshCapsule()
     }
 
     private func retryLoad() {
@@ -285,6 +375,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     @objc private func screenChanged() {
         applyFrame()
         injectPageState()
+        refreshCapsule()
     }
 
     private func applyFrame() {
@@ -311,11 +402,28 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     }
 
     private func syncMousePassthrough() {
+        let screenMouse = NSEvent.mouseLocation
+        if settings.isVisible {
+            settings.panel.ignoresMouseEvents = false
+            // Keep the fullscreen host click-through except on the capsule.
+            // Settings is a higher-level panel, not a child of this window.
+            if capsule.panel.frame.insetBy(dx: -6, dy: -6).contains(screenMouse) {
+                panel.ignoresMouseEvents = false
+            } else {
+                panel.ignoresMouseEvents = true
+            }
+            return
+        }
+        settings.panel.ignoresMouseEvents = true
+        if capsule.panel.frame.insetBy(dx: -6, dy: -6).contains(screenMouse) {
+            panel.ignoresMouseEvents = false
+            return
+        }
         if hotRects.isEmpty {
             panel.ignoresMouseEvents = true
             return
         }
-        let mouse = panel.convertPoint(fromScreen: NSEvent.mouseLocation)
+        let mouse = panel.convertPoint(fromScreen: screenMouse)
         let hit = hotRects.contains { $0.insetBy(dx: -10, dy: -10).contains(mouse) }
         panel.ignoresMouseEvents = !hit
     }
@@ -467,6 +575,22 @@ final class Runtime: NSObject, NSApplicationDelegate {
             NSApp.applicationIconImage = icon
         }
         island.start()
+        if CommandLine.arguments.contains("--show-settings") {
+            let raw = CommandLine.arguments
+                .first(where: { $0.hasPrefix("--settings-tab=") })?
+                .split(separator: "=", maxSplits: 1)
+                .last
+                .map(String.init) ?? "dock"
+            let tab: SettingsTab
+            switch raw {
+            case "looks": tab = .looks
+            case "colors": tab = .colors
+            case "sound": tab = .sound
+            case "links": tab = .links
+            default: tab = .dock
+            }
+            island.revealSettings(tab: tab)
+        }
     }
 
     private static func claimSingleInstance() -> Bool {

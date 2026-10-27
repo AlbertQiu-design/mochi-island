@@ -11,7 +11,7 @@ A Mac menu-bar pet. The shipping app is Swift plus the web UI in `web/`. There i
 ## Layout
 
 - `Sources/MochiCore/` — pet rules, save files, Cursor hook install. No AppKit.
-- `Sources/MochiIsland/` — fullscreen click-through panel and the message bridge.
+- `Sources/MochiIsland/` — fullscreen click-through panel, the native glass capsule, and the message bridge.
 - `Sources/MochiHookCLI/` — the program Cursor hooks run. If it fails, it still exits 0.
 - `web/island.html`, `web/island.css`, `web/island.js`, `web/pets/`, `web/status/` — copied into the app as `Resources/Web`.
 - `Tests/MochiCoreChecks/main.swift` — the checks.
@@ -37,6 +37,8 @@ The page talks to Swift only through `webkit.messageHandlers.island`. Each call 
 Do not add `fetch` to a localhost URL. Do not add a new action without a row in this table.
 
 Swift watches `~/.cursor/mochi-island-tasks.json` and calls `window.pushTasks(tasks, state)` when that file changes. The page does not send `pushTasks`. `getState` and `getTasks` still poll every 5 seconds as a fallback.
+
+The capsule is native AppKit. Swift also calls `window.applyCapsuleChrome(info)` with CSS-pixel frames and `window.applyCapsuleEvent({kind})` for `select`, `created`, and `settings`. Those are not page-to-Swift actions.
 
 ## Play
 
@@ -68,7 +70,7 @@ Tasks in `~/.cursor/mochi-island-tasks.json` share one schema and include `sourc
 
 ## UI
 
-Main path: a 56px black (#111) capsule docked to the right (switchable to the left), 8px from the screen edge. Slots are 36px source faces (Cursor, Grok Bot, 小猫) inside the 56px shell, with an 8px gap. The bottom holds a 36px `+` and a 36px settings icon. `+` opens Cursor, Grok Bot, and 小猫. The popup is 200px wide and opens inward. Only `.speech-option` confirms a choice. Blank popup space and the title call `openAgent`.
+Main path: a 56px native SwiftUI capsule docked to the right (switchable to the left), 8px from the screen edge. The shell uses official Liquid Glass only: `.glassEffect(.clear, in: .capsule)`. Do not use `.regular`, tinted glass, CSS faux-glass, or handmade fills. Slots are a vertical `VStack` of official `Button`s with 36px Designer faces (Cursor, Grok Bot, 小猫). Selection is a spring + `matchedGeometryEffect` on a `.quaternary` rounded rect. A `Divider` sits above the official 36px `plus` `Menu` and `gearshape` `Button`. Settings is the same clear glass. The pane switcher is a horizontal `.glassEffect(.clear, in: .capsule)` tab bar: official `Button`s for Dock / Looks / Colors / Sound / Links, `Divider` separators, and spring + `matchedGeometryEffect` on a `Circle` with `.glassEffect(.clear, in: .circle)`. Selection is a circle, not a pill. Side uses an official segmented `Picker`. Do not use window-titlebar `TabView` chrome or `ultraThinMaterial`. The popup stays web: 200px wide and opens inward. Only `.speech-option` confirms a choice. Blank popup space and the title call `openAgent`.
 
 Dialogue slots live in `dialogue-slots.json` under Application Support. Slot faces are bundled `web/pets/cursor-*.svg` (cursor-v2), `web/pets/grok-*.svg` (grok-v9), and `web/pets/kitten-*.svg` (kitten-v1). All three swap wake/work/wait/done from task status. The capsule does not draw the mood-cat look set.
 
