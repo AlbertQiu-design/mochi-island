@@ -3,7 +3,7 @@ import MochiCore
 import SwiftUI
 
 /// Native sidebar capsule. Chrome is official SwiftUI Liquid Glass:
-/// `.glassEffect(.clear, in: .rect(cornerRadius: 28))`.
+/// `.glassEffect(.clear, in: .capsule)`.
 /// Slot faces stay Designer art. Popup stays web. Settings is native Picker + glass.
 @MainActor
 final class CapsuleChrome: NSObject {
@@ -109,7 +109,7 @@ final class CapsuleChrome: NSObject {
         let maxHeight = max(Self.control * 3, floor(canvas.height * 0.5))
         let slotCount = max(1, model.slots.count)
         let slotsHeight = CGFloat(slotCount) * Self.face + CGFloat(max(0, slotCount - 1)) * Self.gap
-        let natural = Self.pad + slotsHeight + Self.gap + Self.control + Self.gap + Self.control + Self.pad
+        let natural = Self.pad + slotsHeight + Self.gap + 8 + Self.gap + Self.control + Self.gap + Self.control + Self.pad
         let height = min(maxHeight, natural)
         let width = Self.width
         let x = model.dock == "left"
@@ -312,6 +312,7 @@ struct CapsuleSlot: Identifiable {
 
 struct CapsuleRoot: View {
     @ObservedObject var model: CapsuleModel
+    @Namespace private var selectionNS
 
     var body: some View {
         VStack(spacing: CapsuleChrome.gap) {
@@ -321,8 +322,10 @@ struct CapsuleRoot: View {
                         slotButton(slot)
                     }
                 }
-                .frame(maxWidth: .infinity)
             }
+
+            Divider()
+
             Menu {
                 Button("Cursor") { model.create("cursor") }
                 Button("Grok Bot") { model.create("grok-bot") }
@@ -334,6 +337,7 @@ struct CapsuleRoot: View {
                     .contentShape(Circle())
             }
             .menuStyle(.borderlessButton)
+            .buttonStyle(.plain)
             .frame(width: CapsuleChrome.control, height: CapsuleChrome.control)
             .accessibilityLabel("New chat")
 
@@ -343,25 +347,29 @@ struct CapsuleRoot: View {
                     .frame(width: CapsuleChrome.control, height: CapsuleChrome.control)
                     .contentShape(Circle())
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
             .frame(width: CapsuleChrome.control, height: CapsuleChrome.control)
             .accessibilityLabel("Settings")
         }
-        .padding(.vertical, CapsuleChrome.pad)
+        .padding(CapsuleChrome.pad)
         .frame(width: CapsuleChrome.width)
         .frame(maxHeight: .infinity)
-        .glassEffect(
-            .clear,
-            in: .rect(cornerRadius: CapsuleChrome.corner)
-        )
+        .glassEffect(.clear, in: .capsule)
     }
 
     @ViewBuilder
     private func slotButton(_ slot: CapsuleSlot) -> some View {
         Button {
-            model.choose(slot.id)
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                model.choose(slot.id)
+            }
         } label: {
-            ZStack(alignment: model.dock == "right" ? .leading : .trailing) {
+            ZStack {
+                if slot.id == model.selected {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(.quaternary)
+                        .matchedGeometryEffect(id: "slot-selection", in: selectionNS)
+                }
                 if let image = slot.image {
                     Image(nsImage: image)
                         .resizable()
@@ -372,14 +380,22 @@ struct CapsuleRoot: View {
                         .font(.system(size: 16, weight: .medium))
                         .frame(width: CapsuleChrome.face, height: CapsuleChrome.face)
                 }
-                if slot.id == model.selected {
-                    Image(systemName: model.dock == "right" ? "arrowtriangle.left.fill" : "arrowtriangle.right.fill")
-                        .font(.system(size: CapsuleChrome.caret, weight: .semibold))
-                }
             }
-            .frame(width: CapsuleChrome.width, height: CapsuleChrome.face)
+            .frame(width: CapsuleChrome.control, height: CapsuleChrome.control)
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
         .accessibilityLabel(slot.title)
     }
+}
+
+#Preview("Capsule") {
+    let model = CapsuleModel()
+    model.slots = [
+        CapsuleSlot(id: "a", source: "cursor", title: "Cursor", image: nil),
+        CapsuleSlot(id: "b", source: "grok-bot", title: "Grok Bot", image: nil),
+        CapsuleSlot(id: "c", source: "mochi", title: "小猫", image: nil)
+    ]
+    model.selected = "a"
+    return CapsuleRoot(model: model)
+        .frame(width: CapsuleChrome.width, height: 280)
 }

@@ -229,10 +229,7 @@ struct SettingsRoot: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(width: SettingsChrome.width, height: SettingsChrome.height)
-        .glassEffect(
-            .clear,
-            in: .rect(cornerRadius: CapsuleChrome.corner)
-        )
+        .glassEffect(.clear, in: .rect(cornerRadius: 28))
     }
 
     private var dockPane: some View {
@@ -392,4 +389,9 @@ private extension Color {
             opacity: 1
         )
     }
+}
+
+#Preview("Settings") {
+    SettingsRoot(model: SettingsModel())
+        .frame(width: SettingsChrome.width, height: SettingsChrome.height)
 }
