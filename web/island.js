@@ -1,13 +1,7 @@
-const settingsCard = document.getElementById("settings-card");
 const popup = document.getElementById("popup");
 const popupApp = popup.querySelector(".popup-app");
 const popupTitle = popup.querySelector(".popup-title");
 const popupSummary = popup.querySelector(".popup-summary");
-const fillInput = document.getElementById("bubble-fill");
-const textColorInput = document.getElementById("bubble-text-color");
-const strokeInput = document.getElementById("bubble-stroke");
-const cardFillInput = document.getElementById("card-fill");
-const cardStrokeInput = document.getElementById("card-stroke");
 
 const APP_NAME = { cursor: "Cursor", codex: "Codex", "grok-bot": "Grok Bot", mochi: "小猫" };
 const FACE_SRC = {
@@ -69,7 +63,7 @@ let chromeSlots = {};
 let chromeAdd = { left: 0, top: 0, w: 36, h: 36 };
 let chromeSettings = { left: 0, top: 0, w: 36, h: 36 };
 let chromeMeta = {
-  material: "NSGlassEffectView.regular",
+  material: "glassEffect.clear",
   menuCount: 3,
   capsuleW: 56,
   slotW: 56,
@@ -85,6 +79,13 @@ let chromeMeta = {
   selected: "",
 };
 const choiceOverlay = new Map();
+const colors = {
+  fill: "#ffffff",
+  text: "#241f1c",
+  stroke: "#2c2926",
+  card_fill: "#111111",
+  card_stroke: "#2c2926",
+};
 const stored = {
   dx: 0,
   dy: 0,
@@ -350,18 +351,6 @@ function placeFloating() {
     popup.style.left = `${left}px`;
     popup.style.top = `${top}px`;
   }
-  if (document.body.classList.contains("settings-open")) {
-    const width = Math.min(540, Math.max(280, window.innerWidth - 56 - 32));
-    settingsCard.style.width = `${width}px`;
-    const height = settingsCard.offsetHeight || 280;
-    const gearBox = boxRect(chromeSettings, 36, 36);
-    let left = dock === "right" ? capsuleBox.left - gap - width : capsuleBox.right + gap;
-    let top = gearBox.bottom - height;
-    top = clamp(top, 8, Math.max(8, window.innerHeight - 8 - height));
-    left = clamp(left, 8, Math.max(8, window.innerWidth - 8 - width));
-    settingsCard.style.left = `${left}px`;
-    settingsCard.style.top = `${top}px`;
-  }
 }
 
 function glassShape(el) {
@@ -385,7 +374,6 @@ function glassShape(el) {
 function reportHotRects() {
   const nodes = [];
   if (!popup.hidden) nodes.push(popup);
-  if (document.body.classList.contains("settings-open")) nodes.push(settingsCard);
   const rects = nodes
     .map((el) => {
       const box = el.getBoundingClientRect();
@@ -393,30 +381,18 @@ function reportHotRects() {
     })
     .filter((rect) => rect.w > 1 && rect.h > 1);
   islandMessage({ action: "hotRects", rects: JSON.stringify(rects) });
-  const glass = [];
-  if (document.body.classList.contains("settings-open") || document.body.classList.contains("settings-closing")) {
-    const shape = glassShape(settingsCard);
-    if (shape) glass.push(shape);
-  }
-  islandMessage({ action: "glass", rects: JSON.stringify(glass) });
+  islandMessage({ action: "glass", rects: JSON.stringify([]) });
 }
 
 function setDock(side, persist) {
   const next = side === "left" ? "left" : "right";
   document.body.dataset.dock = next;
-  document.querySelectorAll("#dock-picks button").forEach((button) => {
-    button.classList.toggle("active", button.dataset.dock === next);
-  });
   placeFloating();
   if (persist) persistPrefs();
   requestAnimationFrame(reportHotRects);
 }
 
-function setSettingsOpen(open) {
-  document.body.classList.toggle("settings-open", open);
-  placeFloating();
-  requestAnimationFrame(reportHotRects);
-}
+function setSettingsOpen() {}
 
 window.applyCapsuleChrome = function applyCapsuleChrome(info) {
   if (!info || typeof info !== "object") return;
@@ -455,7 +431,6 @@ window.applyCapsuleEvent = function applyCapsuleEvent(event) {
     return;
   }
   if (event.kind === "settings") {
-    setSettingsOpen(!document.body.classList.contains("settings-open"));
     return;
   }
   if (event.kind === "created") {
@@ -474,11 +449,11 @@ function currentPrefs() {
     dy: stored.dy,
     bubble_dx: stored.bubble_dx,
     bubble_dy: stored.bubble_dy,
-    fill: normalizeHex(fillInput.value, "#ffffff"),
-    text: normalizeHex(textColorInput.value, "#241f1c"),
-    stroke: normalizeHex(strokeInput.value, "#2c2926"),
-    card_fill: normalizeHex(cardFillInput.value, "#111111"),
-    card_stroke: normalizeHex(cardStrokeInput.value, "#2c2926"),
+    fill: colors.fill,
+    text: colors.text,
+    stroke: colors.stroke,
+    card_fill: colors.card_fill,
+    card_stroke: colors.card_stroke,
     sound: currentSound,
     look: currentLook,
     pet_scale: stored.pet_scale,
@@ -503,24 +478,19 @@ function normalizeHex(value, fallback) {
 }
 
 function applyBubbleColors(fill, text, stroke) {
-  const nextFill = normalizeHex(fill, "#ffffff");
-  const nextText = normalizeHex(text, "#241f1c");
-  const nextStroke = normalizeHex(stroke, "#2c2926");
-  document.documentElement.style.setProperty("--bubble-fill", nextFill);
-  document.documentElement.style.setProperty("--bubble-text", nextText);
-  document.documentElement.style.setProperty("--bubble-stroke", nextStroke);
-  fillInput.value = nextFill;
-  textColorInput.value = nextText;
-  strokeInput.value = nextStroke;
+  colors.fill = normalizeHex(fill, "#ffffff");
+  colors.text = normalizeHex(text, "#241f1c");
+  colors.stroke = normalizeHex(stroke, "#2c2926");
+  document.documentElement.style.setProperty("--bubble-fill", colors.fill);
+  document.documentElement.style.setProperty("--bubble-text", colors.text);
+  document.documentElement.style.setProperty("--bubble-stroke", colors.stroke);
 }
 
 function applyCardColors(fill, stroke) {
-  const nextFill = normalizeHex(fill, "#111111");
-  const nextStroke = normalizeHex(stroke, "#2c2926");
-  document.documentElement.style.setProperty("--card-fill", nextFill);
-  document.documentElement.style.setProperty("--card-stroke", nextStroke);
-  cardFillInput.value = nextFill;
-  cardStrokeInput.value = nextStroke;
+  colors.card_fill = normalizeHex(fill, "#111111");
+  colors.card_stroke = normalizeHex(stroke, "#2c2926");
+  document.documentElement.style.setProperty("--card-fill", colors.card_fill);
+  document.documentElement.style.setProperty("--card-stroke", colors.card_stroke);
 }
 
 window.applyPrefs = function applyPrefs(prefs) {
@@ -722,10 +692,6 @@ async function refresh() {
   applySnapshot(Array.isArray(tasks) ? tasks : [], state || {});
 }
 
-fillSwatches();
-fillSoundPicks();
-fillLookPicks();
-
 popup.addEventListener("click", (event) => {
   const button = event.target.closest(".speech-option");
   if (button) {
@@ -738,123 +704,6 @@ popup.addEventListener("click", (event) => {
   event.stopPropagation();
   openAgentWindow().catch(() => {});
 });
-
-settingsCard.addEventListener("click", (event) => event.stopPropagation());
-
-document.getElementById("settings-nav").addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-pane]");
-  if (!button) return;
-  document.querySelectorAll(".settings-nav button").forEach((item) => {
-    item.classList.toggle("active", item === button);
-  });
-  document.querySelectorAll(".settings-pane").forEach((section) => {
-    section.classList.toggle("active", section.dataset.pane === button.dataset.pane);
-  });
-  placeFloating();
-  requestAnimationFrame(reportHotRects);
-});
-
-document.getElementById("dock-picks").addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-dock]");
-  if (!button) return;
-  setDock(button.dataset.dock, true);
-});
-
-document.getElementById("sound-picks").addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-sound]");
-  if (!button) return;
-  setCurrentSound(button.dataset.sound, true);
-  persistPrefs();
-});
-
-document.getElementById("look-picks").addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-look]");
-  if (!button || button.classList.contains("placeholder")) return;
-  setCurrentLook(button.dataset.look);
-  playClickSound();
-  persistPrefs();
-});
-
-const COLOR_TARGETS = {
-  fill: fillInput,
-  text: textColorInput,
-  stroke: strokeInput,
-  "card-fill": cardFillInput,
-  "card-stroke": cardStrokeInput,
-};
-document.querySelectorAll(".swatches").forEach((row) => {
-  row.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-color]");
-    const input = COLOR_TARGETS[row.dataset.target];
-    if (!button || !input) return;
-    input.value = button.dataset.color;
-    if (String(row.dataset.target).startsWith("card")) applyCardColors(cardFillInput.value, cardStrokeInput.value);
-    else applyBubbleColors(fillInput.value, textColorInput.value, strokeInput.value);
-    persistPrefs();
-  });
-});
-[fillInput, textColorInput, strokeInput].forEach((input) => {
-  input.addEventListener("change", () => {
-    applyBubbleColors(fillInput.value, textColorInput.value, strokeInput.value);
-    persistPrefs();
-  });
-});
-[cardFillInput, cardStrokeInput].forEach((input) => {
-  input.addEventListener("change", () => {
-    applyCardColors(cardFillInput.value, cardStrokeInput.value);
-    persistPrefs();
-  });
-});
-
-document.getElementById("cursor-scan").addEventListener("change", (event) => {
-  islandCall("setScan", { enabled: event.target.checked }).catch(() => {});
-});
-
-function bindFileSource(buttonId, statusId, readyLabel) {
-  const button = document.getElementById(buttonId);
-  if (!button) return;
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    button.classList.add("connected");
-    button.textContent = readyLabel;
-    const status = document.getElementById(statusId);
-    if (status) status.textContent = "Listening for tasks";
-  });
-}
-bindFileSource("codex-link-btn", "codex-link-status", "Codex ready");
-bindFileSource("grok-link-btn", "grok-link-status", "Grok Bot ready");
-
-document.getElementById("cursor-link-btn").addEventListener("click", async (event) => {
-  event.stopPropagation();
-  const action = cursorLinked ? "disconnect" : "connect";
-  try {
-    const link = await islandCall("cursorLink", {
-      linkAction: action,
-      acknowledged: cursorLinked || document.body.dataset.cursorPrivacy === "shown",
-    });
-    if (link && link.needsPrivacy) {
-      document.body.dataset.cursorPrivacy = "shown";
-      const note = document.getElementById("cursor-privacy");
-      if (note) note.classList.remove("hidden");
-      const button = document.getElementById("cursor-link-btn");
-      if (button) button.textContent = "Continue";
-      return;
-    }
-    setCursorLinkUI(link);
-    await refresh();
-  } catch (error) {
-    return;
-  }
-});
-
-document.getElementById("island").addEventListener(
-  "click",
-  (event) => {
-    if (event.target.closest(".sound-picks") || event.target.closest(".look-picks") || event.target.closest(".swatches")) return;
-    playClickSound();
-  },
-  true
-);
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;

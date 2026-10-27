@@ -17,6 +17,7 @@ let package = Package(
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [
                 .linkedFramework("AppKit"),
+                .linkedFramework("SwiftUI"),
                 .linkedFramework("WebKit"),
                 .linkedFramework("ServiceManagement")
             ]

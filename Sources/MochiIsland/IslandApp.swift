@@ -24,7 +24,7 @@ final class GlassPlate {
     init(panel: NSPanel) {
         self.panel = panel
         let effect = NSGlassEffectView(frame: .zero)
-        effect.style = .regular
+        effect.style = .clear
         effect.tintColor = nil
         if #available(macOS 27.0, *) {
             effect.effectIsInteractive = true
@@ -117,12 +117,14 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     private var localMonitor: Any?
     private var globalMonitor: Any?
     private let capsule = CapsuleChrome()
+    private let settings = SettingsChrome()
 
     func start() {
         configurePanel()
         configureWebView()
         applyFrame()
         configureCapsule()
+        configureSettings()
         startMousePassthrough()
         panel.orderFrontRegardless()
         loadPage()
@@ -244,9 +246,37 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
             )
         }
         capsule.onSettings = { [weak self] in
-            self?.tellPage("window.applyCapsuleEvent && window.applyCapsuleEvent({kind:'settings'});")
+            self?.toggleSettings()
         }
         refreshCapsule()
+    }
+
+    private func configureSettings() {
+        settings.attach(to: panel)
+        settings.onPrefs = { [weak self] json in
+            guard let self else { return }
+            self.session.replacePrefs(json)
+            self.refreshCapsule()
+            self.injectPageState()
+            self.settings.reposition(
+                capsule: self.capsule.panel.frame,
+                dock: self.session.currentPrefs.dock,
+                host: self.panel
+            )
+        }
+        settings.onLink = { [weak self] action, acknowledged in
+            guard let self else { return [:] }
+            return self.session.linkPayload(action: action, acknowledged: acknowledged)
+        }
+        settings.onScan = { [weak self] enabled in
+            self?.session.setScanTranscripts(enabled)
+        }
+        settings.load(prefs: session.currentPrefs, link: session.linkPayload(action: "status", acknowledged: false))
+    }
+
+    private func toggleSettings() {
+        settings.load(prefs: session.currentPrefs, link: session.linkPayload(action: "status", acknowledged: false))
+        settings.toggle(capsule: capsule.panel.frame, dock: session.currentPrefs.dock, host: panel)
     }
 
     private func refreshCapsule() {
