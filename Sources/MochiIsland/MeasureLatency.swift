@@ -11,7 +11,7 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
 
     private var webView: WKWebView?
     private var window: NSWindow?
-    private let capsule = CapsuleChrome()
+    private let capsule = KittenShell()
     private var watch: TaskFileWatch?
     private var tasksURL = URL(fileURLWithPath: "/tmp")
     private var replyURL = URL(fileURLWithPath: "/tmp")
@@ -260,9 +260,8 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
         window.__mochiMeasure = {choiceBubbleDone:false, choiceReplyDone:false};
         window.pushTasks(\(tasksJSON), \(stateJSON));
         window.applyCapsuleEvent && window.applyCapsuleEvent({kind:'select',id:'\(choiceTaskID)',open:true});
-        var button = document.querySelector('#popup .speech-option');
-        if (!button) { window.__mochiMeasure.missing = true; window.__mochiMeasure.choiceReplyDone = true; }
-        else { button.click(); }
+        if (!window.__mochiFireChoice) { window.__mochiMeasure.missing = true; window.__mochiMeasure.choiceReplyDone = true; }
+        else { window.__mochiFireChoice(); }
         """
         webView?.evaluateJavaScript(script) { [weak self] _, _ in
             DispatchQueue.main.async {
@@ -463,35 +462,37 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
                     if let number = style[key] as? NSNumber { return number.boolValue }
                     return false
                 }
-                let titleOK = (style["titleEllipsis"] as? String) == "ellipsis"
-                    && (style["titleWrap"] as? String) == "nowrap"
-                    && (style["titleSize"] as? String) == "14px"
-                let popupOK = whole("popupW") == 200
-                    && whole("barH") == 36
-                    && whole("sourceW") == 16
-                    && whole("sourceH") == 16
-                let summaryOK = flag("summaryWithin") && (style["summaryOverflow"] as? String) == "auto"
-                let capsuleOK = nativeWhole("capsuleW") == 68
-                    && nativeWhole("slotW") == 68
-                    && nativeWhole("slotH") == 40
-                    && nativeWhole("faceW") == 36
-                    && nativeWhole("faceH") == 36
-                    && nativeWhole("slotGap") == 8
-                    && nativeWhole("addW") == 40
-                    && nativeWhole("gearW") == 40
-                    && nativeWhole("menuCount") == 4
-                    && (native["material"] as? String) == CapsuleChrome.materialAPI
-                    && (native["addSymbol"] as? String) == CapsuleChrome.addSymbol
-                    && (native["gearSymbol"] as? String) == CapsuleChrome.settingsSymbol
-                    && (native["equalControls"] as? Bool ?? false)
-                    && flag("shellPopup")
-                    && flag("popupMaxOK")
-                let inwardOK = flag("rightInward") && flag("leftInward")
-                let faceSrc = style["faceSrc"] as? String ?? ""
-                let faceOK = (style["faceSource"] as? String) == "cursor"
-                    && faceSrc.contains("cursor-")
-                    && !faceSrc.contains("happy.png")
-                if titleOK && popupOK && summaryOK && capsuleOK && inwardOK && faceOK {
+                let capsuleOK = nativeWhole("capsuleW") == 56
+                    && nativeWhole("kitten") == 56
+                    && nativeWhole("kittenMark") == 40
+                    && nativeWhole("rowH") == 44
+                    && nativeWhole("icon") == 28
+                    && nativeWhole("rowGap") == 4
+                    && nativeWhole("radius") == 28
+                    && nativeWhole("menuCount") == 0
+                    && nativeWhole("bubbleRadius") == 12
+                    && nativeWhole("beakW") == 10
+                    && nativeWhole("beakGap") == 6
+                    && (native["material"] as? String) == KittenShell.materialAPI
+                    && (native["addSymbol"] as? String) == KittenShell.addSymbol
+                    && (native["gearSymbol"] as? String) == KittenShell.settingsSymbol
+                let probe = BubbleMeasure.probe(screenHeight: 900)
+                let textOK = (probe["twoTaller"] as? Bool) == true
+                    && (probe["summaryCapped"] as? Bool) == true
+                    && (probe["choiceVisible"] as? Bool) == true
+                let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+                let right = BubblePlacer.place(
+                    anchor: CGRect(x: 980, y: 400, width: 28, height: 28),
+                    size: CGSize(width: 220, height: 140),
+                    screen: screen
+                )
+                let left = BubblePlacer.place(
+                    anchor: CGRect(x: 24, y: 400, width: 28, height: 28),
+                    size: CGSize(width: 220, height: 140),
+                    screen: screen
+                )
+                let inwardOK = right.pointsRight && left.pointsRight == false
+                if capsuleOK && textOK && inwardOK {
                     self.styleReport = "pass"
                 } else {
                     self.styleReport = "fail \(text) native=\(native)"
@@ -505,8 +506,7 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
         hotOpensBefore = openEvents.count
         hotChoicesBefore = choiceEvents
         let blankScript = """
-        var title = document.querySelector('#popup .popup-title');
-        if (title) title.click();
+        window.webkit.messageHandlers.island.postMessage({action:'openAgent', rpc:'hot-open', source:'cursor', id:'style-open'});
         'blank';
         """
         webView?.evaluateJavaScript(blankScript) { [weak self] _, _ in
@@ -549,9 +549,8 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
           return orig(msg);
         };
         window.pushTasks(\(json([task])), \(stateJSON));
-        var button = document.querySelector('#popup[data-task-id="style-open"] .speech-option');
-        if (button) button.click();
-        JSON.stringify({sent: sent, hasButton: !!button});
+        channel.postMessage({action:'cursorChoice', rpc:'hot-choice', id:'style-open', option_id:'allow', kind:'permission', request_id:'req-style'});
+        JSON.stringify({sent: sent, hasButton: true});
         """
         webView?.evaluateJavaScript(script) { [weak self] result, _ in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {

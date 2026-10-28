@@ -17,6 +17,9 @@ public struct IslandPrefs: Codable, Equatable {
     public var cursorPrivacyAccepted: Bool
     public var scanTranscripts: Bool
     public var dock: String
+    public var kittenX: Double
+    public var kittenY: Double
+    public var kittenPlaced: Bool
 
     public static let soundIDs = ["boop", "chirp", "mew", "pop", "twinkle"]
     public static let docks = ["left", "right"]
@@ -37,7 +40,10 @@ public struct IslandPrefs: Codable, Equatable {
         bubbleScale: Double = 1,
         cursorPrivacyAccepted: Bool = false,
         scanTranscripts: Bool = false,
-        dock: String = "right"
+        dock: String = "right",
+        kittenX: Double = 1,
+        kittenY: Double = 0.5,
+        kittenPlaced: Bool = false
     ) {
         self.dx = dx
         self.dy = dy
@@ -55,6 +61,12 @@ public struct IslandPrefs: Codable, Equatable {
         self.cursorPrivacyAccepted = cursorPrivacyAccepted
         self.scanTranscripts = scanTranscripts
         self.dock = Self.docks.contains(dock) ? dock : "right"
+        self.kittenX = Self.unit(kittenX)
+        self.kittenY = Self.unit(kittenY)
+        self.kittenPlaced = kittenPlaced
+        if kittenPlaced {
+            self.dock = self.kittenX < 0.5 ? "left" : "right"
+        }
     }
 
     public var dictionary: [String: Any] {
@@ -72,8 +84,68 @@ public struct IslandPrefs: Codable, Equatable {
             "look": look,
             "pet_scale": petScale,
             "bubble_scale": bubbleScale,
-            "dock": dock
+            "dock": dock,
+            "kitten_x": kittenX,
+            "kitten_y": kittenY,
+            "kitten_placed": kittenPlaced
         ]
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case dx, dy, bubbleDx, bubbleDy, fill, text, stroke, cardFill, cardStroke
+        case sound, look, petScale, bubbleScale, cursorPrivacyAccepted, scanTranscripts, dock
+        case kittenX = "kitten_x"
+        case kittenY = "kitten_y"
+        case kittenPlaced = "kitten_placed"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let parsed = IslandPrefs(
+            dx: try container.decodeIfPresent(Double.self, forKey: .dx) ?? 0,
+            dy: try container.decodeIfPresent(Double.self, forKey: .dy) ?? 0,
+            bubbleDx: try container.decodeIfPresent(Double.self, forKey: .bubbleDx) ?? 0,
+            bubbleDy: try container.decodeIfPresent(Double.self, forKey: .bubbleDy) ?? 0,
+            fill: try container.decodeIfPresent(String.self, forKey: .fill) ?? "#ffffff",
+            text: try container.decodeIfPresent(String.self, forKey: .text) ?? "#241f1c",
+            stroke: try container.decodeIfPresent(String.self, forKey: .stroke) ?? "#2c2926",
+            cardFill: try container.decodeIfPresent(String.self, forKey: .cardFill) ?? "#fffdf8",
+            cardStroke: try container.decodeIfPresent(String.self, forKey: .cardStroke) ?? "#2c2926",
+            sound: try container.decodeIfPresent(String.self, forKey: .sound) ?? "boop",
+            look: try container.decodeIfPresent(String.self, forKey: .look) ?? "mochi",
+            petScale: try container.decodeIfPresent(Double.self, forKey: .petScale) ?? 1,
+            bubbleScale: try container.decodeIfPresent(Double.self, forKey: .bubbleScale) ?? 1,
+            cursorPrivacyAccepted: try container.decodeIfPresent(Bool.self, forKey: .cursorPrivacyAccepted) ?? false,
+            scanTranscripts: try container.decodeIfPresent(Bool.self, forKey: .scanTranscripts) ?? false,
+            dock: try container.decodeIfPresent(String.self, forKey: .dock) ?? "right",
+            kittenX: try container.decodeIfPresent(Double.self, forKey: .kittenX) ?? 1,
+            kittenY: try container.decodeIfPresent(Double.self, forKey: .kittenY) ?? 0.5,
+            kittenPlaced: try container.decodeIfPresent(Bool.self, forKey: .kittenPlaced) ?? false
+        )
+        self = parsed
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(dx, forKey: .dx)
+        try container.encode(dy, forKey: .dy)
+        try container.encode(bubbleDx, forKey: .bubbleDx)
+        try container.encode(bubbleDy, forKey: .bubbleDy)
+        try container.encode(fill, forKey: .fill)
+        try container.encode(text, forKey: .text)
+        try container.encode(stroke, forKey: .stroke)
+        try container.encode(cardFill, forKey: .cardFill)
+        try container.encode(cardStroke, forKey: .cardStroke)
+        try container.encode(sound, forKey: .sound)
+        try container.encode(look, forKey: .look)
+        try container.encode(petScale, forKey: .petScale)
+        try container.encode(bubbleScale, forKey: .bubbleScale)
+        try container.encode(cursorPrivacyAccepted, forKey: .cursorPrivacyAccepted)
+        try container.encode(scanTranscripts, forKey: .scanTranscripts)
+        try container.encode(dock, forKey: .dock)
+        try container.encode(kittenX, forKey: .kittenX)
+        try container.encode(kittenY, forKey: .kittenY)
+        try container.encode(kittenPlaced, forKey: .kittenPlaced)
     }
 
     public static func parse(_ json: [String: Any], base: IslandPrefs = IslandPrefs()) -> IslandPrefs {
@@ -105,7 +177,25 @@ public struct IslandPrefs: Codable, Equatable {
         if let dock = json["dock"] as? String, docks.contains(dock) {
             next.dock = dock
         }
+        if json["kitten_x"] != nil {
+            next.kittenX = unit(number(json["kitten_x"], fallback: base.kittenX))
+        }
+        if json["kitten_y"] != nil {
+            next.kittenY = unit(number(json["kitten_y"], fallback: base.kittenY))
+        }
+        if let placed = json["kitten_placed"] as? Bool {
+            next.kittenPlaced = placed
+        } else if let placed = json["kitten_placed"] as? NSNumber {
+            next.kittenPlaced = placed.boolValue
+        }
+        if next.kittenPlaced {
+            next.dock = next.kittenX < 0.5 ? "left" : "right"
+        }
         return next
+    }
+
+    private static func unit(_ value: Double) -> Double {
+        min(1, max(0, value))
     }
 
     private static func number(_ value: Any?, fallback: Double) -> Double {

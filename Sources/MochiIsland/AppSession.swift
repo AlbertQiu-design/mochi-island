@@ -11,8 +11,7 @@ final class AppSession {
     private var prefs: IslandPrefs
     private var slots: DialogueSlotStore
     private var tracker = TaskTransitionTracker()
-    private var knownWaitIDs: Set<String> = []
-    private var waitsPrimed = false
+    private var seenStatus: [String: String] = [:]
 
     init() {
         petStore = PetStore.live()
@@ -20,7 +19,18 @@ final class AppSession {
         slotDisk = DialogueSlotDisk.live()
         pet = petStore.load(migrating: Self.legacyFiles("src/pet_state.json"))
         prefs = prefsStore.load(migrating: Self.legacyFiles("island_offset.json"))
-        slots = slotDisk.load()
+        let now = Date().timeIntervalSince1970
+        var active = Set(
+            TaskReader.load(
+                tasksURL: AppConfig.cursorDirectory.appendingPathComponent("mochi-island-tasks.json"),
+                now: now,
+                includePrompts: false
+            ).map(\.id)
+        )
+        if prefs.scanTranscripts {
+            active.formUnion(TaskReader.transcriptHints(now: now).map(\.id))
+        }
+        slots = slotDisk.load(activeTaskIDs: active)
     }
 
     var currentPrefs: IslandPrefs { prefs }
@@ -163,8 +173,46 @@ final class AppSession {
         prefsStore.save(prefs)
     }
 
+    func markRead(_ id: String) {
+        let next = slots.markingRead(id)
+        guard next != slots else { return }
+        slots = next
+        slotDisk.save(slots)
+    }
+
+    func retireReadDone() {
+        let next = slots.removingReadDone(tasks: visibleTasks(now: Date().timeIntervalSince1970))
+        guard next != slots else { return }
+        slots = next
+        slotDisk.save(slots)
+    }
+
+    func saveKittenPosition(x: Double, y: Double) {
+        prefs.kittenX = min(1, max(0, x))
+        prefs.kittenY = min(1, max(0, y))
+        prefs.kittenPlaced = true
+        prefs.dock = prefs.kittenX < 0.5 ? "left" : "right"
+        prefsStore.save(prefs)
+    }
+
+    func resetKittenPosition() {
+        prefs.kittenPlaced = false
+        prefs.kittenX = 1
+        prefs.kittenY = 0.5
+        prefs.dock = "right"
+        prefsStore.save(prefs)
+    }
+
     private func absorbTasks(_ tasks: [CursorTask]) {
-        let next = slots.selectingNewWaits(in: tasks, known: &knownWaitIDs, primed: &waitsPrimed)
+        var next = slots.merged(with: tasks)
+        for task in tasks {
+            if let previous = seenStatus[task.id], previous != task.status,
+               let index = next.slots.firstIndex(where: { $0.id == task.id }) {
+                next.slots[index].read = false
+            }
+            seenStatus[task.id] = task.status
+        }
+        next = next.normalized()
         guard next != slots else { return }
         slots = next
         slotDisk.save(slots)

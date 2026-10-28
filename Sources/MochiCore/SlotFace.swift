@@ -8,6 +8,7 @@ public enum SlotFace {
         case "grok-bot": return "grok"
         case "mochi": return "kitten"
         case "codex": return "codex"
+        case "gpt": return "gpt"
         default: return "cursor"
         }
     }
@@ -30,6 +31,27 @@ public enum SlotFace {
         case "grok-bot": return "Grok Bot"
         case "mochi": return "小猫"
         case "codex": return "Codex"
+        case "gpt": return "GPT"
+        default: return "Cursor"
+        }
+    }
+
+    /// Simplified mark shipped in `web/pets/` when the official app icon is missing.
+    public static func agentMark(for source: String) -> String {
+        switch AgentLaunch.normalize(source) {
+        case "codex": return "agent-codex"
+        case "grok-bot": return "agent-grok"
+        case "gpt": return "agent-gpt"
+        case "mochi": return "kitten-mark"
+        default: return "agent-cursor"
+        }
+    }
+
+    public static func pickerName(for source: String) -> String {
+        switch AgentLaunch.normalize(source) {
+        case "grok-bot": return "Grok"
+        case "codex": return "Codex"
+        case "gpt": return "GPT"
         default: return "Cursor"
         }
     }

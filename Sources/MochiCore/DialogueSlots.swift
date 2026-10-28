@@ -6,13 +6,15 @@ public struct DialogueSlot: Codable, Equatable {
     public var title: String
     public var skin: String
     public var created: Double
+    public var read: Bool
 
-    public init(id: String, source: String, title: String, skin: String, created: Double) {
+    public init(id: String, source: String, title: String, skin: String, created: Double, read: Bool = false) {
         self.id = id
         self.source = source
         self.title = title
         self.skin = skin
         self.created = created
+        self.read = read
     }
 
     public var dictionary: [String: Any] {
@@ -21,14 +23,38 @@ public struct DialogueSlot: Codable, Equatable {
             "source": source,
             "title": title,
             "skin": skin,
-            "created": created
+            "created": created,
+            "read": read
         ]
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, source, title, skin, created, read
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        source = try container.decodeIfPresent(String.self, forKey: .source) ?? "cursor"
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? "New chat"
+        skin = try container.decodeIfPresent(String.self, forKey: .skin) ?? "cursor"
+        created = try container.decodeIfPresent(Double.self, forKey: .created) ?? 0
+        read = try container.decodeIfPresent(Bool.self, forKey: .read) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(source, forKey: .source)
+        try container.encode(title, forKey: .title)
+        try container.encode(skin, forKey: .skin)
+        try container.encode(created, forKey: .created)
+        try container.encode(read, forKey: .read)
     }
 }
 
 public struct DialogueSlotStore: Codable, Equatable {
-    public static let skins = ["cursor", "grok-bot", "mochi", "codex"]
-    public static let seedSources = ["cursor", "grok-bot", "mochi", "codex"]
+    public static let skins = ["cursor", "grok-bot", "mochi", "codex", "gpt"]
 
     public var selected: String
     public var slots: [DialogueSlot]
@@ -43,6 +69,7 @@ public struct DialogueSlotStore: Codable, Equatable {
         case "grok-bot": return "grok-bot"
         case "mochi": return "mochi"
         case "codex": return "codex"
+        case "gpt": return "gpt"
         default: return "cursor"
         }
     }
@@ -50,20 +77,6 @@ public struct DialogueSlotStore: Codable, Equatable {
     /// Kept for older callers; face now follows the source, not a hash of the id.
     public static func stableSkin(for id: String) -> String {
         face(for: id.hasPrefix("seed-") ? String(id.dropFirst(5)) : "cursor")
-    }
-
-    public static func seed(now: Double, rng: inout some RandomNumberGenerator) -> DialogueSlotStore {
-        _ = rng.next()
-        let slots = seedSources.map { source in
-            DialogueSlot(
-                id: "seed-\(source)",
-                source: source,
-                title: source == "mochi" ? SlotFace.displayName(for: source) : "New chat",
-                skin: face(for: source),
-                created: now
-            )
-        }
-        return DialogueSlotStore(selected: slots[0].id, slots: slots)
     }
 
     public func normalized() -> DialogueSlotStore {
@@ -83,20 +96,29 @@ public struct DialogueSlotStore: Codable, Equatable {
         return next
     }
 
-    public func ensuringSeedSources() -> DialogueSlotStore {
+    /// Drops preset `seed-*` rows and the kitten row when they are not an active task.
+    public func droppingIdleSeeds(activeTaskIDs: Set<String>) -> DialogueSlotStore {
         var next = normalized()
-        for (index, source) in Self.seedSources.enumerated() {
-            guard !next.slots.contains(where: { AgentLaunch.normalize($0.source) == source }) else { continue }
-            next.slots.insert(
-                DialogueSlot(
-                    id: "seed-\(source)",
-                    source: source,
-                    title: source == "mochi" ? SlotFace.displayName(for: source) : "New chat",
-                    skin: Self.face(for: source),
-                    created: next.slots.first?.created ?? 0
-                ),
-                at: min(index, next.slots.count)
-            )
+        next.slots.removeAll { slot in
+            let seeded = slot.id.hasPrefix("seed-")
+            let kitten = AgentLaunch.normalize(slot.source) == "mochi"
+            guard seeded || kitten else { return false }
+            return !activeTaskIDs.contains(slot.id)
+        }
+        if !next.slots.contains(where: { $0.id == next.selected }) {
+            next.selected = next.slots.first?.id ?? ""
+        }
+        return next
+    }
+
+    /// After the bubble closes, a read slot whose task is done or failed leaves the capsule.
+    public func removingReadDone(tasks: [CursorTask]) -> DialogueSlotStore {
+        let status = Dictionary(tasks.map { ($0.id, $0.status) }, uniquingKeysWith: { _, latest in latest })
+        var next = normalized()
+        next.slots.removeAll { slot in
+            guard slot.read else { return false }
+            let state = status[slot.id] ?? ""
+            return state == "done" || state == "fail"
         }
         if !next.slots.contains(where: { $0.id == next.selected }) {
             next.selected = next.slots.first?.id ?? ""
@@ -163,6 +185,14 @@ public struct DialogueSlotStore: Codable, Equatable {
         return next
     }
 
+    public func markingRead(_ id: String) -> DialogueSlotStore {
+        var next = normalized()
+        if let index = next.slots.firstIndex(where: { $0.id == id }) {
+            next.slots[index].read = true
+        }
+        return next
+    }
+
     /// Selects the newest wait id that was not already known. The first call only records ids.
     public func selectingNewWaits(in tasks: [CursorTask], known: inout Set<String>, primed: inout Bool) -> DialogueSlotStore {
         var next = merged(with: tasks)
@@ -190,16 +220,17 @@ public final class DialogueSlotDisk {
         DialogueSlotDisk(directory: AppConfig.supportDirectory)
     }
 
-    public func load(now: Double = Date().timeIntervalSince1970) -> DialogueSlotStore {
-        if let existing = read() {
-            let filled = existing.ensuringSeedSources()
-            if filled != existing { save(filled) }
-            return filled
+    /// Missing files stay empty. Existing files drop idle seed and kitten rows.
+    public func load(now: Double = Date().timeIntervalSince1970, activeTaskIDs: Set<String> = []) -> DialogueSlotStore {
+        _ = now
+        guard let existing = read() else {
+            return DialogueSlotStore()
         }
-        var rng = SystemRandomNumberGenerator()
-        let seeded = DialogueSlotStore.seed(now: now, rng: &rng)
-        save(seeded)
-        return seeded
+        let migrated = existing.droppingIdleSeeds(activeTaskIDs: activeTaskIDs)
+        if migrated != existing.normalized() {
+            save(migrated)
+        }
+        return migrated
     }
 
     public func save(_ store: DialogueSlotStore) {
@@ -210,9 +241,9 @@ public final class DialogueSlotDisk {
     }
 
     private func read() -> DialogueSlotStore? {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode(DialogueSlotStore.self, from: data),
-              !decoded.slots.isEmpty else {
+        guard FileManager.default.fileExists(atPath: fileURL.path),
+              let data = try? Data(contentsOf: fileURL),
+              let decoded = try? JSONDecoder().decode(DialogueSlotStore.self, from: data) else {
             return nil
         }
         return decoded.normalized()

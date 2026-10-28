@@ -46,6 +46,9 @@ final class SettingsChrome: NSObject {
     var onScan: ((Bool) -> Void)? {
         didSet { model.onScan = onScan }
     }
+    var onReset: (() -> Void)? {
+        didSet { model.onReset = onReset }
+    }
 
     var isVisible: Bool { panel.isVisible && panel.alphaValue > 0 }
 
@@ -82,6 +85,9 @@ final class SettingsChrome: NSObject {
         self.model = model
         self.hosting = hosting
         super.init()
+        model.onClose = { [weak self] in
+            self?.hide()
+        }
     }
 
     func attach(to host: NSWindow) {
@@ -166,6 +172,8 @@ final class SettingsModel: ObservableObject {
     var onPrefs: (([String: Any]) -> Void)?
     var onLink: ((String, Bool) -> [String: Any])?
     var onScan: ((Bool) -> Void)?
+    var onReset: (() -> Void)?
+    var onClose: (() -> Void)?
 
     func apply(prefs: IslandPrefs, link: [String: Any]) {
         dock = prefs.dock
@@ -239,15 +247,46 @@ final class SettingsModel: ObservableObject {
     }
 }
 
+private struct SettingsCloseButton: View {
+    var action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(hovered
+                        ? Color(red: 1, green: 95 / 255, blue: 87 / 255)
+                        : Color(white: 0.62))
+                    .frame(width: 14, height: 14)
+                if hovered {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                }
+            }
+            .frame(width: 20, height: 20)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+        .accessibilityLabel("Close")
+    }
+}
+
 struct SettingsRoot: View {
     @ObservedObject var model: SettingsModel
     @Namespace private var tabNS
 
     var body: some View {
-        VStack(spacing: CapsuleChrome.gap) {
-            settingsTabBar
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
+        VStack(spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
+                SettingsCloseButton { model.onClose?() }
+                settingsTabBar
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 16)
+            .padding(.top, 14)
 
             Group {
                 switch model.tab {
@@ -264,7 +303,7 @@ struct SettingsRoot: View {
         .frame(width: SettingsChrome.width, height: SettingsChrome.height)
         .background {
             Color.clear
-                .glassEffect(.clear, in: .rect(cornerRadius: 28))
+                .glassEffect(.regular, in: .rect(cornerRadius: 28))
                 .allowsHitTesting(false)
         }
         .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
@@ -273,18 +312,14 @@ struct SettingsRoot: View {
     private var settingsTabBar: some View {
         HStack(spacing: 0) {
             ForEach(SettingsTab.allCases, id: \.self) { item in
-                if item != SettingsTab.allCases.first {
-                    Divider()
-                        .frame(height: 11)
-                }
                 tabButton(item)
             }
         }
-        .padding(3)
+        .padding(2)
+        .frame(height: AppConfig.settingsBarHeight)
         .background {
-            Color.clear
-                .glassEffect(.clear, in: .capsule)
-                .allowsHitTesting(false)
+            RoundedRectangle(cornerRadius: AppConfig.settingsBarRadius, style: .continuous)
+                .fill(Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255))
         }
     }
 
@@ -294,30 +329,21 @@ struct SettingsRoot: View {
             choose(item)
         } label: {
             Text(item.title)
-                .font(.system(size: 13, weight: .medium))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
+                .font(Font(NSFont.systemFont(ofSize: 13, weight: NSFont.Weight(rawValue: 0.29))))
+                .foregroundStyle(selected
+                    ? Color(red: 245 / 255, green: 245 / 255, blue: 247 / 255)
+                    : Color(red: 142 / 255, green: 142 / 255, blue: 147 / 255))
+                .frame(minWidth: AppConfig.settingsTabMinWidth, maxWidth: .infinity, minHeight: 28)
                 .background {
                     if selected {
-                        GeometryReader { geo in
-                            let side = geo.size.height
-                            GlassEffectContainer {
-                                Circle()
-                                    .fill(.clear)
-                                    .frame(width: side, height: side)
-                                    .glassEffect(.clear, in: .circle)
-                                    .matchedGeometryEffect(id: "settings-tab", in: tabNS)
-                            }
-                            .frame(width: geo.size.width, height: geo.size.height)
-                            .position(x: geo.size.width / 2, y: geo.size.height / 2)
-                        }
+                        RoundedRectangle(cornerRadius: AppConfig.settingsSelectRadius, style: .continuous)
+                            .fill(Color(red: 58 / 255, green: 58 / 255, blue: 58 / 255))
+                            .matchedGeometryEffect(id: "settings-tab", in: tabNS)
                     }
                 }
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
-        .allowsHitTesting(true)
-        .simultaneousGesture(TapGesture().onEnded { choose(item) })
         .accessibilityLabel(item.title)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
@@ -331,30 +357,19 @@ struct SettingsRoot: View {
 
     private var dockPane: some View {
         Form {
-            Section("Sidebar") {
-                Picker("Side", selection: $model.dock) {
-                    Text("Left").tag("left")
-                    Text("Right").tag("right")
-                }
-                .pickerStyle(.segmented)
-                .onChange(of: model.dock) { _, _ in model.persist() }
+            Section("Kitten") {
+                Button("Reset kitten position") { model.onReset?() }
                 Toggle("Open at login", isOn: $model.launchAtLogin)
                     .onChange(of: model.launchAtLogin) { _, enabled in
                         model.setLaunchAtLogin(enabled)
                     }
-                LabeledContent("Agents") {
-                    Text("Four to start, then grows")
-                        .foregroundStyle(.secondary)
-                }
-                LabeledContent("Height") {
-                    Text("Fits the list, up to 570 pt")
-                        .foregroundStyle(.secondary)
-                }
+                Text("Drag the kitten anywhere on the screen. The capsule and bubble follow it.")
+                    .foregroundStyle(.secondary)
             }
             Section("About") {
                 LabeledContent("Mochi Island", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
                 LabeledContent("Build", value: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "2")
-                Text("A Mac sidebar pet. Official Liquid Glass only.")
+                Text("A Mac kitten. Regular Liquid Glass on every surface.")
                     .foregroundStyle(.secondary)
             }
         }
@@ -441,14 +456,20 @@ struct SettingsRoot: View {
     private var soundPane: some View {
         Form {
             Section("Click sound") {
-                Picker("Sound", selection: $model.sound) {
+                Picker("Sound", selection: Binding(
+                    get: { model.sound },
+                    set: { value in
+                        model.sound = value
+                        model.persist()
+                        SoundPlayer.shared.playPreview(value)
+                    }
+                )) {
                     ForEach(SettingsChrome.sounds, id: \.self) { id in
                         Text(id.capitalized).tag(id)
                     }
                 }
                 .pickerStyle(.segmented)
-                .onChange(of: model.sound) { _, _ in model.persist() }
-                Text("Plays when you click the pet or a slot.")
+                Text("Plays when you click the kitten, pick an agent, or hear an alert. A muted Mac stays quiet.")
                     .foregroundStyle(.secondary)
             }
         }

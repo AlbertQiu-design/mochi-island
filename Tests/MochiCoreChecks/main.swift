@@ -240,7 +240,8 @@ func TaskReaderKeepsSource() throws {
                 "x": ["id": "x", "title": "Codex", "status": "running", "updated": now, "source": "codex"],
                 "g": ["id": "g", "title": "Grok", "status": "running", "updated": now, "source": "grok-bot"],
                 "m": ["id": "m", "title": "Cat", "status": "running", "updated": now, "source": "cat"],
-                "z": ["id": "z", "title": "Other", "status": "running", "updated": now, "source": "nope"]
+                "z": ["id": "z", "title": "Other", "status": "running", "updated": now, "source": "nope"],
+                "p": ["id": "p", "title": "GPT", "status": "running", "updated": now, "source": "chatgpt"]
             ]
         ]
         try JSONSerialization.data(withJSONObject: payload).write(to: url)
@@ -251,6 +252,7 @@ func TaskReaderKeepsSource() throws {
         check(byID["g"] == "grok-bot")
         check(byID["m"] == "mochi")
         check(byID["z"] == "cursor")
+        check(byID["p"] == "gpt")
         check(tasks.first { $0.id == "x" }?.dictionary["source"] as? String == "codex")
     }
 
@@ -281,6 +283,28 @@ func AgentLaunchFindsInstalledAppsAndCodexFallback() {
         check(AppConfig.supportDirectory.path.contains(AppConfig.bundleID))
         let fromHome = AgentLaunch.plan(source: "cursor", home: home) { _ in false }
         check(fromHome.url == "https://cursor.com")
+        check(AgentLaunch.normalize("gpt") == "gpt")
+        check(AgentLaunch.normalize("ChatGPT") == "gpt")
+        check(AgentLaunch.normalize("openai") == "gpt")
+        let gpt = AgentLaunch.plan(source: "gpt") { path in
+            path.hasSuffix("/ChatGPT.app")
+        }
+        check(gpt.appPath?.hasSuffix("/ChatGPT.app") == true)
+        check(gpt.url == nil)
+        let gptMissing = AgentLaunch.plan(source: "chatgpt") { _ in false }
+        check(gptMissing.appPath == nil)
+        check(gptMissing.url == "https://chatgpt.com")
+        check(gptMissing.note?.contains("ChatGPT.app") == true)
+        var rng = SplitMix64(seed: 1)
+        let created = DialogueSlotStore().created(source: "openai", now: 3, rng: &rng).1
+        check(created.source == "gpt")
+        check(created.skin == "gpt")
+        check(created.read == false)
+        check(SlotFace.displayName(for: "gpt") == "GPT")
+        check(SlotFace.agentMark(for: "gpt") == "agent-gpt")
+        check(SlotFace.agentMark(for: "cursor") == "agent-cursor")
+        check(SlotFace.agentMark(for: "Codex") == "agent-codex")
+        check(SlotFace.agentMark(for: "grok") == "agent-grok")
     }
 
 struct SplitMix64: RandomNumberGenerator {
@@ -292,6 +316,146 @@ struct SplitMix64: RandomNumberGenerator {
         z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
         z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
         return z ^ (z >> 31)
+    }
+}
+
+func KittenPositionParsesAndClamps() throws {
+    let high = IslandPrefs.parse(["kitten_x": 1.4, "kitten_y": -0.2, "kitten_placed": true])
+    check(high.kittenX == 1)
+    check(high.kittenY == 0)
+    check(high.kittenPlaced)
+    check(high.dock == "right")
+    check(high.dictionary["kitten_x"] as? Double == 1)
+    let left = IslandPrefs.parse(["kitten_x": 0.2, "kitten_y": 0.4, "kitten_placed": true], base: IslandPrefs(dock: "right"))
+    check(left.kittenX == 0.2)
+    check(left.kittenY == 0.4)
+    check(left.dock == "left")
+    let fresh = IslandPrefs.parse([:])
+    check(fresh.kittenPlaced == false)
+    check(fresh.dock == "right")
+    let data = try JSONEncoder().encode(high)
+    let text = String(data: data, encoding: .utf8) ?? ""
+    check(text.contains("kitten_x"))
+    check(text.contains("kitten_y"))
+    check(text.contains("kitten_placed"))
+    let decoded = try JSONDecoder().decode(IslandPrefs.self, from: data)
+    check(decoded.kittenX == 1)
+    check(decoded.kittenY == 0)
+    check(decoded.kittenPlaced)
+    check(decoded.dock == "right")
+    let legacy = try JSONDecoder().decode(IslandPrefs.self, from: Data("{\"dx\":2,\"dock\":\"left\"}".utf8))
+    check(legacy.dx == 2)
+    check(legacy.dock == "left")
+    check(legacy.kittenPlaced == false)
+}
+
+func SpecConstantsAndShellGeometry() {
+    check(AppConfig.materialAPI == "glassEffect.regular")
+    check(AppConfig.bubbleRadius == 12)
+    check(AppConfig.beakWidth == 10)
+    check(AppConfig.beakHeight == 16)
+    check(AppConfig.beakGap == 6)
+    check(abs(AppConfig.beakTipRadius - 2.8) < 0.001)
+    check(AppConfig.bubbleMinWidth == 160)
+    check(AppConfig.bubbleMaxWidth == 220)
+    check(AppConfig.bubblePadX == 12)
+    check(AppConfig.bubblePadY == 8)
+    check(AppConfig.bubbleMinHeight == 44)
+    check(AppConfig.kittenSize == 56)
+    check(AppConfig.capsuleWidth == 56)
+    check(AppConfig.capsuleRadius == 28)
+    check(AppConfig.kittenMark == 40)
+    check(AppConfig.agentRow == 44)
+    check(AppConfig.agentIcon == 28)
+    check(AppConfig.rowGap == 4)
+    check(AppConfig.dragThreshold == 3)
+    check(AppConfig.screenInset == 8)
+    check(AppConfig.settingsBarHeight == 32)
+    check(AppConfig.settingsSelectRadius == 14)
+    check(AppConfig.settingsTabMinWidth == 64)
+    check(AppConfig.settingsWidth == 420)
+    check(AppConfig.glassTintRed == 28)
+    check(AppConfig.glassTintGreen == 28)
+    check(AppConfig.glassTintBlue == 30)
+    check(ShellGeometry.contentHeight(agentCount: 0) == 173)
+    check(ShellGeometry.contentHeight(agentCount: 1) == 221)
+    check(ShellGeometry.contentHeight(agentCount: 4) == 365)
+    check(ShellGeometry.contentHeight(agentCount: 8) == 557)
+    let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+    let anchor = ShellGeometry.defaultAnchor(screen: screen, visible: screen)
+    check(abs(anchor.x - (1440 - 8 - 28)) < 0.1)
+    check(abs(anchor.y - 450) < 0.1)
+    let ratios = ShellGeometry.ratios(anchor: anchor, screen: screen)
+    check(ratios.x > 0.9 && ratios.x <= 1)
+    check(abs(ratios.y - 0.5) < 0.02)
+    let clamped = ShellGeometry.ratios(anchor: CGPoint(x: -40, y: 2000), screen: screen)
+    check(clamped.x == 0)
+    check(clamped.y == 1)
+    let visible = CGRect(x: 0, y: 0, width: 800, height: 500)
+    let collapsed = ShellGeometry.placeCapsule(
+        anchorCenter: CGPoint(x: 400, y: 40),
+        expanded: false,
+        agentCount: 4,
+        visible: visible
+    )
+    check(collapsed.frame.height == 56)
+    check(collapsed.frame.minY == 12)
+    let opened = ShellGeometry.placeCapsule(
+        anchorCenter: CGPoint(x: 400, y: 40),
+        expanded: true,
+        agentCount: 4,
+        visible: visible
+    )
+    check(abs(opened.frame.maxY - collapsed.frame.maxY) < 0.1)
+    check(opened.frame.minY >= visible.minY - 0.1)
+    check(opened.scrolls)
+    let roomy = CGRect(x: 0, y: 0, width: 800, height: 900)
+    let grew = ShellGeometry.placeCapsule(
+        anchorCenter: CGPoint(x: 400, y: 600),
+        expanded: true,
+        agentCount: 4,
+        visible: roomy
+    )
+    let grewClosed = ShellGeometry.placeCapsule(
+        anchorCenter: CGPoint(x: 400, y: 600),
+        expanded: false,
+        agentCount: 4,
+        visible: roomy
+    )
+    check(abs(grew.frame.maxY - grewClosed.frame.maxY) < 0.1)
+    check(grew.frame.height == ShellGeometry.contentHeight(agentCount: 4))
+    check(grew.scrolls == false)
+    let crowded = ShellGeometry.placeCapsule(
+        anchorCenter: CGPoint(x: 400, y: 250),
+        expanded: true,
+        agentCount: 20,
+        visible: visible
+    )
+    check(crowded.scrolls)
+    check(crowded.frame.height <= visible.height)
+    let rightAnchor = CGRect(x: 900, y: 360, width: 28, height: 28)
+    let rightBubble = BubblePlacer.place(anchor: rightAnchor, size: CGSize(width: 220, height: 120), screen: screen)
+    check(rightBubble.pointsRight)
+    check(abs(rightBubble.frame.maxX - (rightAnchor.minX - AppConfig.beakGap)) < 0.1)
+    let leftAnchor = CGRect(x: 20, y: 360, width: 28, height: 28)
+    let leftBubble = BubblePlacer.place(anchor: leftAnchor, size: CGSize(width: 220, height: 120), screen: screen)
+    check(leftBubble.pointsRight == false)
+    check(abs(leftBubble.frame.minX - (leftAnchor.maxX + AppConfig.beakGap)) < 0.1)
+    let topAnchor = CGRect(x: 700, y: 860, width: 28, height: 28)
+    let topBubble = BubblePlacer.place(anchor: topAnchor, size: CGSize(width: 220, height: 180), screen: screen)
+    check(topBubble.frame.maxY <= screen.maxY + 0.1)
+    check(topBubble.beakY >= AppConfig.bubbleRadius + 8 - 0.1)
+    check(topBubble.beakY <= 180 - AppConfig.bubbleRadius - 8 + 0.1)
+    let bottomAnchor = CGRect(x: 700, y: 4, width: 28, height: 28)
+    let bottomBubble = BubblePlacer.place(anchor: bottomAnchor, size: CGSize(width: 220, height: 180), screen: screen)
+    check(bottomBubble.frame.minY >= screen.minY - 0.1)
+    check(bottomBubble.beakY >= AppConfig.bubbleRadius + 8 - 0.1)
+    var gate = AlertSoundGate()
+    check(gate.shouldPlay(now: 10))
+    check(gate.shouldPlay(now: 10.4) == false)
+    check(gate.shouldPlay(now: 11))
+    for name in IslandPrefs.soundIDs {
+        check(ToneSynth.peak(name) > 0.05)
     }
 }
 
@@ -307,36 +471,30 @@ func DockPrefDefaultsToRight() {
     check(junk.dock == "left")
 }
 
-func EmptySlotFileSeedsFourFaces() throws {
+func EmptyFileHasNoSeeds() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-slots-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let disk = DialogueSlotDisk(directory: directory)
-    let store = disk.load(now: 10)
-    check(store.slots.count == 4)
-    check(store.slots.map(\.source) == DialogueSlotStore.seedSources)
-    check(Set(store.slots.map(\.source)) == Set(["cursor", "grok-bot", "mochi", "codex"]))
-    check(store.slots.first { $0.source == "mochi" }?.title == "小猫")
+    let store = disk.load(now: 10, activeTaskIDs: ["live-1"])
+    check(store.slots.isEmpty)
+    check(store.selected.isEmpty)
+    check(!FileManager.default.fileExists(atPath: disk.fileURL.path))
     check(SlotFace.pack(for: "mochi") == "kitten")
     check(SlotFace.resourceName(source: "小猫", status: "") == "kitten-wake")
     check(SlotFace.resourceName(source: "mochi", status: "wait") == "kitten-wait")
     check(SlotFace.displayName(for: "mochi") == "小猫")
     check(SlotFace.label(title: "New chat", source: "mochi") == "小猫")
-    check(store.slots.allSatisfy { $0.skin == $0.source })
-    check(store.slots.allSatisfy { DialogueSlotStore.skins.contains($0.skin) })
-    check(store.selected == store.slots[0].id)
-    check(!store.slots[0].skin.contains("happy"))
-    check(!store.slots.contains { $0.skin.hasPrefix("blob-") })
-    check(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("mochi-island-tasks.json").path))
     let again = disk.load(now: 99)
-    check(again == store)
+    check(again.slots.isEmpty)
 }
 
 func MergeKeepsSkinAndLeavesSlotsWhenTasksLeave() {
-    var rng = SplitMix64(seed: 3)
-    let seeded = DialogueSlotStore.seed(now: 1, rng: &rng)
-    let keptID = seeded.slots[0].id
-    let stillThere = seeded.merged(with: [])
-    check(stillThere.slots.contains { $0.id == keptID })
+    let kept = DialogueSlotStore(
+        selected: "keep",
+        slots: [DialogueSlot(id: "keep", source: "cursor", title: "Stay", skin: "cursor", created: 1)]
+    )
+    let stillThere = kept.merged(with: [])
+    check(stillThere.slots.contains { $0.id == "keep" })
 
     let store = DialogueSlotStore(
         selected: "abc",
@@ -356,8 +514,10 @@ func MergeKeepsSkinAndLeavesSlotsWhenTasksLeave() {
 }
 
 func CreateSlotAppendsAFaceWithoutATaskFile() {
-    var rng = SplitMix64(seed: 9)
-    let store = DialogueSlotStore.seed(now: 2, rng: &rng)
+    let store = DialogueSlotStore(
+        selected: "one",
+        slots: [DialogueSlot(id: "one", source: "cursor", title: "One", skin: "cursor", created: 1)]
+    )
     var createRNG = SplitMix64(seed: 11)
     let (next, slot) = store.created(source: "Grok Bot", now: 20, rng: &createRNG)
     check(next.slots.count == store.slots.count + 1)
@@ -383,26 +543,63 @@ func KittenV1FaceFilesFollowSource() {
     check(SlotFace.displayName(for: "grok-bot") == "Grok Bot")
 }
 
-func EnsuringSeedAddsMissingKitten() {
+func OldSeedMigrationKeepsActiveTasks() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-migrate-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let raw = """
+    {"selected":"seed-cursor","slots":[
+      {"id":"seed-cursor","source":"cursor","title":"New chat","skin":"cursor","created":1},
+      {"id":"seed-mochi","source":"mochi","title":"小猫","skin":"mochi","created":1},
+      {"id":"seed-codex","source":"codex","title":"New chat","skin":"codex","created":1},
+      {"id":"live-1","source":"cursor","title":"Keep me","skin":"cursor","created":2},
+      {"id":"cat-1","source":"mochi","title":"小猫","skin":"mochi","created":3}
+    ]}
+    """
+    let file = directory.appendingPathComponent("dialogue-slots.json")
+    try raw.data(using: .utf8)?.write(to: file)
+    let disk = DialogueSlotDisk(directory: directory)
+    let store = disk.load(activeTaskIDs: ["live-1", "cat-1", "seed-codex"])
+    let ids = Set(store.slots.map(\.id))
+    check(ids == Set(["live-1", "cat-1", "seed-codex"]))
+    check(!ids.contains("seed-cursor"))
+    check(!ids.contains("seed-mochi"))
+    check(store.slots.first { $0.id == "live-1" }?.read == false)
+    check(store.slots.first { $0.id == "cat-1" }?.source == "mochi")
+    let idle = disk.load(activeTaskIDs: [])
+    check(idle.slots.map(\.id) == ["live-1"])
+}
+
+func RemoveWhenReadAndDone() {
     let store = DialogueSlotStore(
-        selected: "seed-cursor",
+        selected: "a",
         slots: [
-            DialogueSlot(id: "seed-cursor", source: "cursor", title: "Cursor", skin: "cursor", created: 1),
-            DialogueSlot(id: "seed-grok-bot", source: "grok-bot", title: "Grok", skin: "grok-bot", created: 1)
+            DialogueSlot(id: "a", source: "cursor", title: "Done", skin: "cursor", created: 1, read: true),
+            DialogueSlot(id: "b", source: "cursor", title: "Wait", skin: "cursor", created: 1, read: true),
+            DialogueSlot(id: "c", source: "cursor", title: "Unread", skin: "cursor", created: 1, read: false),
+            DialogueSlot(id: "d", source: "gpt", title: "Run", skin: "gpt", created: 1, read: true),
+            DialogueSlot(id: "e", source: "codex", title: "Fail", skin: "codex", created: 1, read: true)
         ]
     )
-    check(!store.slots.contains { $0.source == "mochi" })
-    let filled = store.ensuringSeedSources()
-    check(filled.slots.contains { $0.source == "mochi" && $0.id == "seed-mochi" })
-    check(filled.slots.contains { $0.source == "cursor" })
-    check(filled.slots.contains { $0.source == "grok-bot" })
-    check(filled.slots.contains { $0.source == "codex" && $0.id == "seed-codex" })
-    check(filled.slots.first { $0.source == "mochi" }?.title == "小猫")
+    let next = store.removingReadDone(tasks: [
+        CursorTask(id: "a", title: "Done", status: "done"),
+        CursorTask(id: "b", title: "Wait", status: "wait"),
+        CursorTask(id: "c", title: "Unread", status: "done"),
+        CursorTask(id: "d", title: "Run", status: "running", source: "gpt"),
+        CursorTask(id: "e", title: "Fail", status: "fail", source: "codex")
+    ])
+    let ids = Set(next.slots.map(\.id))
+    check(ids == Set(["b", "c", "d"]))
+    check(next.markingRead("c").slots.first { $0.id == "c" }?.read == true)
 }
 
 func SelectingKeepsOnlyKnownIds() {
-    var rng = SplitMix64(seed: 5)
-    let store = DialogueSlotStore.seed(now: 1, rng: &rng)
+    let store = DialogueSlotStore(
+        selected: "a",
+        slots: [
+            DialogueSlot(id: "a", source: "cursor", title: "A", skin: "cursor", created: 1),
+            DialogueSlot(id: "b", source: "codex", title: "B", skin: "codex", created: 1)
+        ]
+    )
     let picked = store.slots[1].id
     let next = store.selecting(picked)
     check(next.selected == picked)
@@ -412,8 +609,10 @@ func SelectingKeepsOnlyKnownIds() {
 }
 
 func NewWaitSelectsOnlyAfterTheFirstSnapshot() {
-    var rng = SplitMix64(seed: 4)
-    let store = DialogueSlotStore.seed(now: 1, rng: &rng)
+    let store = DialogueSlotStore(
+        selected: "seeded",
+        slots: [DialogueSlot(id: "seeded", source: "cursor", title: "Old", skin: "cursor", created: 1)]
+    )
     var known: Set<String> = []
     var primed = false
     let first = store.selectingNewWaits(
@@ -422,7 +621,7 @@ func NewWaitSelectsOnlyAfterTheFirstSnapshot() {
         primed: &primed
     )
     check(primed)
-    check(first.selected == store.selected)
+    check(first.selected == "seeded")
     check(first.slots.contains { $0.id == "w" })
     let second = first.selectingNewWaits(
         in: [
@@ -468,12 +667,15 @@ try TaskWatchFiresWhenTheFileIsReplaced()
 try ReplyWriterOnlyAllowsPermissionActions()
 try TaskReaderKeepsSource()
 AgentLaunchFindsInstalledAppsAndCodexFallback()
+try KittenPositionParsesAndClamps()
+SpecConstantsAndShellGeometry()
 DockPrefDefaultsToRight()
-try EmptySlotFileSeedsFourFaces()
+try EmptyFileHasNoSeeds()
+try OldSeedMigrationKeepsActiveTasks()
+RemoveWhenReadAndDone()
 MergeKeepsSkinAndLeavesSlotsWhenTasksLeave()
 CreateSlotAppendsAFaceWithoutATaskFile()
 KittenV1FaceFilesFollowSource()
-EnsuringSeedAddsMissingKitten()
 SelectingKeepsOnlyKnownIds()
 NewWaitSelectsOnlyAfterTheFirstSnapshot()
 LiveHooksFixWhenAsked()

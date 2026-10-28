@@ -24,7 +24,7 @@ final class GlassPlate {
     init(panel: NSPanel) {
         self.panel = panel
         let effect = NSGlassEffectView(frame: .zero)
-        effect.style = .clear
+        effect.style = .regular
         effect.tintColor = nil
         let interactive = NSSelectorFromString("setEffectIsInteractive:")
         if effect.responds(to: interactive) {
@@ -117,9 +117,10 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     private var hotRects: [NSRect] = []
     private var localMonitor: Any?
     private var globalMonitor: Any?
-    private let capsule = CapsuleChrome()
+    private let capsule = KittenShell()
+    private var primedAlerts = false
+    private var seenAlertKeys: Set<String> = []
     private let settings = SettingsChrome()
-    private var openedWait = ""
 
     func start() {
         configurePanel()
@@ -231,22 +232,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
 
     private func configureCapsule() {
         capsule.attach(to: panel)
-        capsule.onSelect = { [weak self] id, open in
-            guard let self else { return }
-            _ = self.session.selectSlot(id)
-            self.refreshCapsule()
-            self.tellPage(
-                "window.applyCapsuleEvent && window.applyCapsuleEvent({kind:'select',id:\(Self.jsonString(id)),open:\(open ? "true" : "false")});"
-            )
-        }
-        capsule.onCreate = { [weak self] source in
-            guard let self else { return }
-            let created = self.session.createSlot(source: source)
-            self.refreshCapsule()
-            self.tellPage(
-                "window.applyCapsuleEvent && window.applyCapsuleEvent({kind:'created',selected:\(Self.jsonString(created["selected"] as? String ?? "")),slots:\(Self.jsonString(created["slots"] ?? []))});"
-            )
-        }
+        capsule.apply(prefs: session.currentPrefs, force: true)
         capsule.onSettings = { [weak self] in
             self?.toggleSettings()
         }
@@ -256,6 +242,28 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
         }
         capsule.onOpenAgent = { [weak self] source, taskID in
             _ = self?.session.openAgent(source: source, taskID: taskID)
+        }
+        capsule.onOpenApp = { [weak self] source in
+            _ = self?.session.openAgent(source: source, taskID: "")
+        }
+        capsule.onPosition = { [weak self] x, y in
+            guard let self else { return }
+            self.session.saveKittenPosition(x: x, y: y)
+            if self.settings.isVisible {
+                self.settings.reposition(capsule: self.capsule.hitFrame, dock: self.session.currentPrefs.dock, host: self.panel)
+            }
+        }
+        capsule.onRead = { [weak self] id in
+            self?.session.markRead(id)
+        }
+        capsule.onRetire = { [weak self] in
+            guard let self else { return }
+            self.session.retireReadDone()
+            self.refreshCapsule()
+        }
+        capsule.protectedFrames = { [weak self] in
+            guard let self, self.settings.isVisible else { return [] }
+            return [self.settings.panel.frame]
         }
         refreshCapsule()
     }
@@ -267,8 +275,9 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
             self.session.replacePrefs(json)
             self.refreshCapsule()
             self.injectPageState()
+            self.capsule.apply(prefs: self.session.currentPrefs, force: true)
             self.settings.reposition(
-                capsule: self.capsule.panel.frame,
+                capsule: self.capsule.hitFrame,
                 dock: self.session.currentPrefs.dock,
                 host: self.panel
             )
@@ -280,19 +289,27 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
         settings.onScan = { [weak self] enabled in
             self?.session.setScanTranscripts(enabled)
         }
+        settings.onReset = { [weak self] in
+            guard let self else { return }
+            self.session.resetKittenPosition()
+            self.capsule.apply(prefs: self.session.currentPrefs, force: true)
+            if self.settings.isVisible {
+                self.settings.reposition(capsule: self.capsule.hitFrame, dock: self.session.currentPrefs.dock, host: self.panel)
+            }
+        }
         settings.load(prefs: session.currentPrefs, link: session.linkPayload(action: "status", acknowledged: false))
     }
 
     private func toggleSettings() {
         settings.load(prefs: session.currentPrefs, link: session.linkPayload(action: "status", acknowledged: false))
-        settings.toggle(capsule: capsule.panel.frame, dock: session.currentPrefs.dock, host: panel)
+        settings.toggle(capsule: capsule.hitFrame, dock: session.currentPrefs.dock, host: panel)
     }
 
     func revealSettings(tab: SettingsTab = .dock) {
         settings.load(prefs: session.currentPrefs, link: session.linkPayload(action: "status", acknowledged: false))
         settings.select(tab)
         if !settings.isVisible {
-            settings.toggle(capsule: capsule.panel.frame, dock: session.currentPrefs.dock, host: panel)
+            settings.toggle(capsule: capsule.hitFrame, dock: session.currentPrefs.dock, host: panel)
         }
     }
 
@@ -300,23 +317,47 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
         let state = session.statePayload()
         let tasks = session.tasksPayload()
         let selected = state["selected"] as? String ?? ""
-        let waiting = tasks.contains {
-            ($0["id"] as? String) == selected && ($0["status"] as? String) == "wait"
-        }
+        capsule.apply(prefs: session.currentPrefs)
         capsule.sync(
             slots: state["slots"] as? [[String: Any]] ?? [],
             selected: selected,
             tasks: tasks,
             dock: session.currentPrefs.dock
         )
-        if waiting, selected != openedWait {
-            openedWait = selected
-            capsule.revealSelected()
-        }
-        if !waiting, openedWait == selected {
-            openedWait = ""
-        }
+        considerAlerts(tasks: tasks, slots: state["slots"] as? [[String: Any]] ?? [])
         publishCapsule()
+    }
+
+    private func considerAlerts(tasks: [[String: Any]], slots: [[String: Any]]) {
+        var read: [String: Bool] = [:]
+        for slot in slots {
+            let id = slot["id"] as? String ?? ""
+            guard !id.isEmpty else { continue }
+            if let flag = slot["read"] as? Bool {
+                read[id] = flag
+            } else if let flag = slot["read"] as? NSNumber {
+                read[id] = flag.boolValue
+            }
+        }
+        var pending: [(id: String, updated: Double, status: String)] = []
+        for task in tasks {
+            let id = task["id"] as? String ?? ""
+            let status = task["status"] as? String ?? ""
+            guard !id.isEmpty, status == "wait" || status == "done" || status == "fail" else { continue }
+            if read[id] == true { continue }
+            let updated = (task["updated"] as? NSNumber)?.doubleValue ?? (task["updated"] as? Double) ?? 0
+            pending.append((id, updated, status))
+        }
+        let keys = Set(pending.map { "\($0.id)|\($0.status)" })
+        if !primedAlerts {
+            primedAlerts = true
+            seenAlertKeys = keys
+            return
+        }
+        let fresh = pending.filter { !seenAlertKeys.contains("\($0.id)|\($0.status)") }
+        seenAlertKeys.formUnion(keys)
+        guard let newest = fresh.max(by: { $0.updated < $1.updated }) else { return }
+        capsule.presentAlert(id: newest.id)
     }
 
     private func publishCapsule() {
@@ -398,7 +439,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
         refreshCapsule()
         if settings.isVisible {
             settings.reposition(
-                capsule: capsule.panel.frame,
+                capsule: capsule.hitFrame,
                 dock: session.currentPrefs.dock,
                 host: panel
             )
@@ -431,29 +472,15 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     private func syncMousePassthrough() {
         let screenMouse = NSEvent.mouseLocation
         settings.panel.ignoresMouseEvents = !settings.isVisible
-        if settings.isVisible {
-            // Settings is an independent window. Leave the fullscreen host
-            // click-through so WKWebView cannot eat the tab bar clicks.
-            capsule.hideTip()
-            capsule.hideCard()
-        } else {
-            capsule.noteHover(at: screenMouse)
-        }
-        if capsule.panel.frame.insetBy(dx: -6, dy: -6).contains(screenMouse) {
+        if capsule.hitFrame.insetBy(dx: -4, dy: -4).contains(screenMouse) {
             panel.ignoresMouseEvents = false
             return
         }
-        if let bubble = capsule.interactiveBubbleFrame, bubble.insetBy(dx: -6, dy: -6).contains(screenMouse) {
+        if let bubble = capsule.interactiveBubbleFrame, bubble.insetBy(dx: -4, dy: -4).contains(screenMouse) {
             panel.ignoresMouseEvents = false
             return
         }
-        if hotRects.isEmpty {
-            panel.ignoresMouseEvents = true
-            return
-        }
-        let mouse = panel.convertPoint(fromScreen: screenMouse)
-        let hit = hotRects.contains { $0.insetBy(dx: -10, dy: -10).contains(mouse) }
-        panel.ignoresMouseEvents = !hit
+        panel.ignoresMouseEvents = true
     }
 
     private static func parseRects(_ value: Any?, windowHeight: CGFloat) -> [NSRect] {

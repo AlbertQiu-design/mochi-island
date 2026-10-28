@@ -1,6 +1,6 @@
 # Mochi Island
 
-A Mac menu-bar pet. The shipping app is Swift plus the web UI in `web/`. There is no local web server. The main path is a sidebar capsule and an inward popup.
+A Mac kitten that lives on the desktop. The shipping app is Swift plus a thin web bridge in `web/`. There is no local web server. The main path is a frameless kitten, an adaptive capsule, and one regular-glass beak bubble.
 
 ## Run
 
@@ -11,7 +11,7 @@ A Mac menu-bar pet. The shipping app is Swift plus the web UI in `web/`. There i
 ## Layout
 
 - `Sources/MochiCore/` — pet rules, save files, Cursor hook install. No AppKit.
-- `Sources/MochiIsland/` — fullscreen click-through panel, the native glass capsule, and the message bridge.
+- `Sources/MochiIsland/` — the kitten shell, the regular-glass bubble, native sound, and the message bridge.
 - `Sources/MochiHookCLI/` — the program Cursor hooks run. If it fails, it still exits 0.
 - `web/island.html`, `web/island.css`, `web/island.js`, `web/pets/`, `web/status/` — copied into the app as `Resources/Web`.
 - `Tests/MochiCoreChecks/main.swift` — the checks.
@@ -24,31 +24,32 @@ The page talks to Swift only through `webkit.messageHandlers.island`. Each call 
 |---|---|
 | `hotRects` | click-through rectangles |
 | `glass` | glass plates behind bubbles and cards |
-| `savePrefs` | dock side, color, sound, look, and the selected slot id when `selected` is sent |
+| `savePrefs` | kitten position (`kitten_x`, `kitten_y`, `kitten_placed`), color, sound, and look. `dock` is derived from the kitten |
 | `getState` | pet snapshot plus `slots`, `selected`, and `dock` |
 | `play` | play with the pet |
 | `getTasks` | current Cursor tasks |
 | `cursorLink` | connect or disconnect hooks. `linkAction` is `connect`, `disconnect`, or `status`. First connect needs `acknowledged: true` after the privacy line is shown |
-| `cursorChoice` | Popup approval option. Writes `~/.cursor/mochi-island-reply.json` and the page updates that popup immediately. Does not open an agent window |
-| `openAgent` | Blank popup or title click. `source` is `cursor`, `codex`, `grok-bot`, or `mochi`. Opens that app. `mochi` (小猫) stays local and does not open a URL |
+| `cursorChoice` | Bubble choice. Writes `~/.cursor/mochi-island-reply.json`. Does not open an agent window |
+| `openAgent` | Title or empty bubble space. `source` is `cursor`, `codex`, `grok-bot`, `gpt`, or `mochi`. Brings that app forward, or opens its site when the app is not installed. `mochi` stays on this Mac |
 | `setScan` | optional local file notice. Default off. It records names and times, not chat text |
-| `createSlot` | `source` is `cursor`, `grok-bot`, `mochi`, or `codex`. Appends a dialogue slot whose face follows that source. Does not write the task file |
+| `createSlot` | Still accepted. The plus button does not create a seed; it opens Cursor, Codex, Grok, or GPT |
 
 Do not add `fetch` to a localhost URL. Do not add a new action without a row in this table.
 
-Swift watches `~/.cursor/mochi-island-tasks.json` and calls `window.pushTasks(tasks, state)` when that file changes. The page does not send `pushTasks`. `getState` and `getTasks` still poll every 5 seconds as a fallback.
+Swift watches `~/.cursor/mochi-island-tasks.json` and calls `window.pushTasks(tasks, state)` when that file changes. The page does not send `pushTasks`. `getState` and `getTasks` still poll every 5 seconds as a fallback. The page keeps the hot-rect bridge and does not draw the kitten, the capsule, or the bubble.
 
-The capsule is native AppKit. Swift also calls `window.applyCapsuleChrome(info)` with CSS-pixel frames and `window.applyCapsuleEvent({kind})` for `select`, `created`, and `settings`. Those are not page-to-Swift actions.
+The kitten, capsule, bubble, and settings are native. Click-through is the kitten or capsule frame plus the bubble frame. Swift still calls `window.applyCapsuleChrome(info)` with the capsule frame. That is not a page-to-Swift action.
 
 ## Play
 
-Rules live in `Sources/MochiCore/PetEngine.swift`. The page only draws them.
+Rules live in `Sources/MochiCore/PetEngine.swift`. Finished tasks still feed the pet there. The desktop shows the kitten shell, not a page-drawn pet.
 
 - Hunger, energy, and happiness still decay on the old intervals.
-- Play is the only manual action. There is no Feed button.
+- There is no Feed button. Dragging the kitten saves its place. Clicking it opens the capsule.
 - One finished Cursor task feeds the pet once. A failed task does not. The task id is stored, and only the latest 500 are kept.
 - Hunger at 95, or energy at 0, makes the pet sleep. Sleep stops decay. The next finished AI task wakes it. There is no death and no New Pet button.
 - Do not write copy that makes the user feel guilty for leaving.
+- Dialogue slots are not seeded. A running task adds its icon. Wait, done, and fail show a red dot and a bubble until the user opens that task. After the bubble closes, a read task that is done leaves the capsule. Wait stays until the user chooses.
 
 ## Data
 
@@ -66,15 +67,17 @@ Do not drive Cursor with AppleScript or Accessibility. Do not start agents with 
 
 Prompt and command text are not stored. Permission bubbles only say allow or deny.
 
-Tasks in `~/.cursor/mochi-island-tasks.json` share one schema and include `source`: `cursor`, `codex`, `grok-bot`, or `mochi`. Cursor tasks are written by `MochiHookCLI`. Codex and Grok Bot tasks are written by `Scripts/mochi-upsert-task.sh`. A blank task bubble opens that source. `Codex.app` is not required: when it is missing, Codex opens `https://chatgpt.com/codex`. Grok Bot opens `Grok Bot.app` when that app is installed. `mochi` is the 小猫 desk pet and stays on this Mac.
+Tasks in `~/.cursor/mochi-island-tasks.json` share one schema and include `source`: `cursor`, `codex`, `grok-bot`, `gpt`, or `mochi`. Cursor tasks are written by `MochiHookCLI`. Codex, Grok Bot, and GPT tasks are written by `Scripts/mochi-upsert-task.sh` (`source=gpt` is accepted). Opening an agent brings the app forward. `Codex.app` is not required: when it is missing, Codex opens `https://chatgpt.com/codex`. GPT prefers `ChatGPT.app`, otherwise `https://chatgpt.com`. Grok Bot opens `Grok Bot.app` or `Grok.app` when one is installed, otherwise `https://grok.com`. `mochi` stays on this Mac. Do not use AppleScript or Accessibility to focus a text field.
 
 ## UI
 
-Main path: a 68×602 `NSPanel` (borderless, clear, floating, `hidesOnDeactivate=false`, `materialActiveAppearance(.active)`) docked to the right (switchable to the left), 20px from the screen edge. The shell is a 60-wide official Liquid Glass capsule: `.glassEffect(.clear, in: .capsule)`. Do not use `.regular`, tinted glass, CSS faux-glass, `ultraThinMaterial`, or handmade fills. Slots start as four agents (Cursor, Grok Bot, 小猫, Codex) plus a white `plus` `Menu` and white `gearshape` `Button` (six chrome items). Height hugs that list and grows with new agents, capped at 570 / 602. Slots are official `Button`s with 36px Designer faces inside 40pt circles. Selection is `Circle` + `.white.opacity(0.25)` + spring + `matchedGeometryEffect`. Hovering a slot shows a Dock-style Liquid Glass label; a new wait / approval opens a 200px inward glass card. Both use `.glassEffect(.clear)` and a glass caret aimed at that bot. Settings is an independent higher-level panel so Dock / Looks / Colors / Sound / Links receive clicks. The pane switcher is a horizontal `.glassEffect(.clear, in: .capsule)` tab bar: official `Button`s, `Divider` separators, and spring + `matchedGeometryEffect` on a clear `Circle`. Panes are official grouped `Form`s. Do not use titlebar `TabView` chrome. Only the native option buttons confirm a choice. Blank card space and the title call `openAgent`.
+Collapsed is a frameless 56×56 kitten drawn from the full `kitten-wake.png` illustration. No capsule and no glass plate. Click opens the capsule with a spring. The kitten stays in its 56pt well on a circular glass base, and the capsule grows downward from that well. A drag of 3pt or more saves the screen-relative position and stays collapsed. The capsule is 56 wide with radius 28 and system Liquid Glass (`.glassEffect(.regular, in: .capsule)`): kitten, divider, agent icons, a `plus`, and a gear. Its height follows the agent count, shifts up to stay on screen, and scrolls when it is still too tall. Agent icons are the installed app's icon, or `web/pets/agent-*.svg` when the app is missing. There is no chevron menu and there are no preset seed slots.
 
-Dialogue slots live in `dialogue-slots.json` under Application Support. Slot faces are bundled `web/pets/cursor-*.svg` (cursor-v2), `web/pets/grok-*.svg` (grok-v9), and the full Designer kitten-v1 illustrations `web/pets/kitten-*.png` (wake/work/wait/done). All four seed sources swap wake/work/wait/done from task status. Codex uses the official `circle` symbol until a Designer pack exists.
+One bubble is used for a task card, an alert, and the plus picker. It is `.glassEffect(.regular, in: BubbleShape)`. The body, beak root, and beak tip share radius 12. The beak is 10×16, 6pt from the anchor, and aims at that icon. On the left half of the screen the bubble flips to the right. The capsule, bubble, picker, and settings use the same system `.regular` Liquid Glass. CSS blur, saturate, and fill are not applied to native glass.
 
-Chinese uses PingFang SC. Status marks use the GIFs in `web/status/`. Looks in settings are one Mochi set, 16 slots, 4 per row. Colors are eight swatches plus hex text. Never use `<input type="color">`.
+Settings is a separate panel on regular glass. Its top bar is a dark capsule segment: container radius 16, selected radius 14, spring plus `matchedGeometryEffect`. The Dock page resets the kitten position. The Sound page previews the selected timbre. Sound is native `AVAudioEngine` (boop, chirp, mew, pop, twinkle), follows system mute, and plays an alert at most once a second.
+
+Chinese uses PingFang SC. Looks in settings are one Mochi set, 16 slots, 4 per row. Colors are eight swatches plus hex text. Never use `<input type="color">`.
 
 ## Release
 

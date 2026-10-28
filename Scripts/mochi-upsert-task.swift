@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-let allowedSources = ["cursor", "codex", "grok-bot"]
+let allowedSources = ["cursor", "codex", "grok-bot", "gpt"]
 let allowedStatus = ["running", "wait", "done", "fail"]
 
 var source = ""
@@ -47,7 +47,7 @@ while !args.isEmpty {
 }
 
 if !allowedSources.contains(source) || id.isEmpty || (!remove && !allowedStatus.contains(status)) {
-    fputs("usage: mochi-upsert-task.sh --source cursor|codex|grok-bot --id ID [--title TEXT] [--status running|wait|done|fail] [--tasks PATH] [--remove]\n", stderr)
+    fputs("usage: mochi-upsert-task.sh --source cursor|codex|grok-bot|gpt --id ID [--title TEXT] [--status running|wait|done|fail] [--tasks PATH] [--remove]\n", stderr)
     exit(2)
 }
 

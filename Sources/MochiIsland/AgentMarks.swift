@@ -1,0 +1,191 @@
+import AppKit
+import MochiCore
+import SwiftUI
+
+enum MarkPath {
+    static func make(_ d: String) -> Path {
+        var path = Path()
+        var index = d.startIndex
+        var command: Character = "M"
+        var current = CGPoint.zero
+        var start = CGPoint.zero
+
+        func skip() {
+            while index < d.endIndex, d[index].isWhitespace || d[index] == "," {
+                index = d.index(after: index)
+            }
+        }
+
+        func number() -> CGFloat? {
+            skip()
+            guard index < d.endIndex else { return nil }
+            let begin = index
+            if d[index] == "-" || d[index] == "+" { index = d.index(after: index) }
+            var saw = false
+            while index < d.endIndex, d[index].isNumber || d[index] == "." {
+                saw = true
+                index = d.index(after: index)
+            }
+            guard saw, let value = Double(d[begin..<index]) else { return nil }
+            return CGFloat(value)
+        }
+
+        while index < d.endIndex {
+            skip()
+            if index >= d.endIndex { break }
+            if d[index].isLetter {
+                command = d[index]
+                index = d.index(after: index)
+            }
+            if command == "Z" || command == "z" {
+                path.closeSubpath()
+                current = start
+                continue
+            }
+            guard let x = number(), let y = number() else { break }
+            switch command {
+            case "M":
+                current = CGPoint(x: x, y: y)
+                start = current
+                path.move(to: current)
+                command = "L"
+            case "L":
+                current = CGPoint(x: x, y: y)
+                path.addLine(to: current)
+            case "Q":
+                guard let x2 = number(), let y2 = number() else { return path }
+                current = CGPoint(x: x2, y: y2)
+                path.addQuadCurve(to: current, control: CGPoint(x: x, y: y))
+            case "C":
+                guard let x2 = number(), let y2 = number(), let x3 = number(), let y3 = number() else { return path }
+                current = CGPoint(x: x3, y: y3)
+                path.addCurve(to: current, control1: CGPoint(x: x, y: y), control2: CGPoint(x: x2, y: y2))
+            default:
+                break
+            }
+        }
+        return path
+    }
+}
+
+/// The earlier full kitten-v1 illustration (`kitten-wake.png`), not the simplified mark.
+struct FullKitten: View {
+    var body: some View {
+        if let image = Self.artwork {
+            Image(nsImage: image)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .accessibilityLabel("Kitten")
+        } else {
+            KittenMark()
+        }
+    }
+
+    static let artwork: NSImage? = {
+        guard let url = Bundle.main.url(forResource: "kitten-wake", withExtension: "png", subdirectory: "Web/pets") else {
+            return nil
+        }
+        return NSImage(contentsOf: url)
+    }()
+}
+
+struct KittenMark: View {
+    private static let earL = "M17.5 20.0 L21.0 8.5 L26.5 18.5 Z"
+    private static let earLInner = "M19.2 18.5 L21.2 11.5 L24.8 17.8 Z"
+    private static let earR = "M46.5 20.0 L43.0 8.5 L37.5 18.5 Z"
+    private static let earRInner = "M44.8 18.5 L42.8 11.5 L39.2 17.8 Z"
+    private static let body = "M32.0 17.0 C34.8 16.4 37.5 17.2 39.5 19.2 L41.2 18.0 L42.5 20.2 C44.8 20.0 47.0 22.0 47.8 24.8 L49.5 25.5 L49.0 27.8 C50.8 29.5 51.5 32.5 50.8 35.5 C51.8 38.5 50.5 42.0 48.0 44.0 L49.0 46.5 L46.5 47.5 C45.0 50.5 41.0 53.0 36.5 54.0 C34.5 55.2 29.5 55.2 27.5 54.0 C23.0 53.0 19.0 50.5 17.5 47.5 L15.0 46.5 L16.0 44.0 C13.5 42.0 12.2 38.5 13.2 35.5 C12.5 32.5 13.2 29.5 15.0 27.8 L14.5 25.5 L16.2 24.8 C17.0 22.0 19.2 20.0 21.5 20.2 L22.8 18.0 L24.5 19.2 C26.5 17.2 29.2 16.4 32.0 17.0 Z"
+    private static let mouth = "M28.5 36.2 Q32 39.0 35.5 36.2"
+    private static let tail = "M42.0 46.5 C45.5 46.0 49.5 43.5 51.5 39.5 C53.5 35.0 53.0 30.0 50.0 27.5 C47.5 25.5 44.5 26.5 44.0 29.5 C43.6 31.8 45.2 33.5 47.0 34.2 C46.0 36.8 44.5 39.8 42.8 42.5 C41.5 44.5 40.8 46.8 42.0 46.5 Z"
+    private static let ink = Color(red: 61 / 255, green: 41 / 255, blue: 20 / 255)
+
+    var body: some View {
+        Canvas { context, size in
+            let scale = min(size.width, size.height) / 64
+            context.scaleBy(x: scale, y: scale)
+            func paint(_ d: String, fill: Color, line: CGFloat = 0) {
+                let path = MarkPath.make(d)
+                context.fill(path, with: .color(fill))
+                if line > 0 {
+                    context.stroke(path, with: .color(Self.ink), style: StrokeStyle(lineWidth: line, lineCap: .round, lineJoin: .round))
+                }
+            }
+            paint(Self.tail, fill: .white, line: 2.1)
+            paint(Self.earL, fill: .white, line: 2.1)
+            paint(Self.earLInner, fill: Color(red: 1, green: 182 / 255, blue: 193 / 255))
+            paint(Self.earR, fill: .white, line: 2.1)
+            paint(Self.earRInner, fill: Color(red: 1, green: 182 / 255, blue: 193 / 255))
+            paint(Self.body, fill: .white, line: 1.9)
+            context.fill(Path(ellipseIn: CGRect(x: 30.4, y: 32, width: 3.2, height: 2.4)), with: .color(Color(red: 244 / 255, green: 160 / 255, blue: 176 / 255)))
+            context.stroke(MarkPath.make(Self.mouth), with: .color(Self.ink), style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
+            context.fill(Path(ellipseIn: CGRect(x: 22.3, y: 24.6, width: 6.4, height: 6.8)), with: .color(Color(red: 74 / 255, green: 144 / 255, blue: 226 / 255)))
+            context.stroke(Path(ellipseIn: CGRect(x: 22.3, y: 24.6, width: 6.4, height: 6.8)), with: .color(Self.ink), lineWidth: 0.9)
+            context.fill(Path(ellipseIn: CGRect(x: 35.3, y: 24.6, width: 6.4, height: 6.8)), with: .color(Color(red: 245 / 255, green: 166 / 255, blue: 35 / 255)))
+            context.stroke(Path(ellipseIn: CGRect(x: 35.3, y: 24.6, width: 6.4, height: 6.8)), with: .color(Self.ink), lineWidth: 0.9)
+        }
+        .accessibilityLabel("Kitten")
+    }
+}
+
+struct AgentMark: View {
+    var source: String
+
+    var body: some View {
+        Canvas { context, size in
+            let scale = min(size.width, size.height) / 28
+            context.scaleBy(x: scale, y: scale)
+            switch AgentLaunch.normalize(source) {
+            case "codex":
+                for point in [CGPoint(x: 8, y: 8), CGPoint(x: 20, y: 8), CGPoint(x: 8, y: 20), CGPoint(x: 20, y: 20)] {
+                    context.fill(Path(ellipseIn: CGRect(x: point.x - 6.5, y: point.y - 6.5, width: 13, height: 13)), with: .color(Color(red: 43 / 255, green: 181 / 255, blue: 160 / 255)))
+                }
+                context.fill(Path(ellipseIn: CGRect(x: 10, y: 10, width: 8, height: 8)), with: .color(Color(red: 26 / 255, green: 143 / 255, blue: 125 / 255)))
+            case "grok-bot":
+                context.fill(Path(ellipseIn: CGRect(x: 1, y: 1, width: 26, height: 26)), with: .color(Color(red: 10 / 255, green: 10 / 255, blue: 10 / 255)))
+                context.stroke(Path(ellipseIn: CGRect(x: 1, y: 1, width: 26, height: 26)), with: .color(Color(white: 0.23)), lineWidth: 1)
+                var ring = Path(ellipseIn: CGRect(x: -2, y: 8.5, width: 32, height: 11))
+                let transform = CGAffineTransform(translationX: 14, y: 14).rotated(by: -28 * .pi / 180).translatedBy(x: -14, y: -14)
+                ring = ring.applying(transform)
+                context.stroke(ring, with: .color(Color(red: 245 / 255, green: 245 / 255, blue: 247 / 255)), lineWidth: 1.4)
+                var cross = Path()
+                cross.move(to: CGPoint(x: 10, y: 10))
+                cross.addLine(to: CGPoint(x: 18, y: 18))
+                cross.move(to: CGPoint(x: 18, y: 10))
+                cross.addLine(to: CGPoint(x: 10, y: 18))
+                context.stroke(cross, with: .color(Color(red: 245 / 255, green: 245 / 255, blue: 247 / 255)), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+            case "gpt":
+                context.fill(Path(ellipseIn: CGRect(x: 1, y: 1, width: 26, height: 26)), with: .color(Color(white: 0.1)))
+                for step in 0..<6 {
+                    var petal = Path(ellipseIn: CGRect(x: 10.8, y: 2.8, width: 6.4, height: 8.4))
+                    let turn = CGAffineTransform(translationX: 14, y: 14).rotated(by: CGFloat(step) * .pi / 3).translatedBy(x: -14, y: -14)
+                    petal = petal.applying(turn)
+                    context.fill(petal, with: .color(.white))
+                }
+                context.fill(Path(ellipseIn: CGRect(x: 11, y: 11, width: 6, height: 6)), with: .color(Color(white: 0.1)))
+            default:
+                let cube = MarkPath.make("M2 8 L14 2 L26 8 L26 18 L14 24 L2 18 Z")
+                context.fill(cube, with: .color(.white))
+                context.stroke(cube, with: .color(Color(white: 0.9)), lineWidth: 1)
+                var seams = Path()
+                seams.move(to: CGPoint(x: 14, y: 2))
+                seams.addLine(to: CGPoint(x: 14, y: 14))
+                seams.addLine(to: CGPoint(x: 26, y: 8))
+                seams.move(to: CGPoint(x: 14, y: 14))
+                seams.addLine(to: CGPoint(x: 2, y: 8))
+                context.stroke(seams, with: .color(Color(white: 0.68)), lineWidth: 0.9)
+            }
+        }
+        .accessibilityLabel(SlotFace.displayName(for: source))
+    }
+}
+
+enum AgentIcon {
+    static func image(source: String) -> NSImage? {
+        let plan = AgentLaunch.plan(source: source)
+        guard let path = plan.appPath else { return nil }
+        let icon = NSWorkspace.shared.icon(forFile: path)
+        icon.size = NSSize(width: 32, height: 32)
+        return icon
+    }
+}

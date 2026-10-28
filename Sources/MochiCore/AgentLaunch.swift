@@ -20,6 +20,8 @@ public enum AgentLaunch {
             return "codex"
         case "grok", "grok-bot", "grokbot", "grok bot":
             return "grok-bot"
+        case "gpt", "chatgpt", "openai":
+            return "gpt"
         case "mochi", "cat", "小猫":
             return "mochi"
         default:
@@ -48,6 +50,10 @@ public enum AgentLaunch {
             names = ["Grok Bot", "Grok"]
             fallback = "https://grok.com"
             missing = "Grok Bot.app is not installed; opened the Grok page."
+        case "gpt":
+            names = ["ChatGPT"]
+            fallback = "https://chatgpt.com"
+            missing = "ChatGPT.app is not installed; opened the ChatGPT page."
         default:
             names = ["Cursor"]
             fallback = "https://cursor.com"

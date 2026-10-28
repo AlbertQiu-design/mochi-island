@@ -22,7 +22,9 @@ let package = Package(
                 .linkedFramework("AppKit"),
                 .linkedFramework("SwiftUI"),
                 .linkedFramework("WebKit"),
-                .linkedFramework("ServiceManagement")
+                .linkedFramework("ServiceManagement"),
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("CoreAudio")
             ]
         ),
         .executableTarget(
