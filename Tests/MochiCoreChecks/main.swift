@@ -1,3 +1,8 @@
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 import MochiCore
 
@@ -100,6 +105,10 @@ func SaveClampsHunger() throws {
         let loaded = store.load()
         check(loaded.name == "TestCat")
         check(loaded.hunger == 100)
+        store.save(PetState(name: "TestCat", hunger: 40, energy: 70))
+        let replaced = store.load()
+        check(replaced.hunger == 40)
+        check(replaced.energy == 70)
     }
 
 func OnlyRunningToDoneFeeds() {
@@ -170,7 +179,18 @@ func TaskWatchFiresWhenTheFileIsReplaced() throws {
         let temp = directory.appendingPathComponent(".\(UUID().uuidString).tmp")
         try data.write(to: temp)
         if FileManager.default.fileExists(atPath: file.path) {
+            #if canImport(Darwin)
             _ = try FileManager.default.replaceItemAt(file, withItemAt: temp)
+            #else
+            let rc = temp.path.withCString { from in
+                file.path.withCString { to in
+                    rename(from, to)
+                }
+            }
+            if rc != 0 {
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+            }
+            #endif
         } else {
             try FileManager.default.moveItem(at: temp, to: file)
         }
@@ -192,6 +212,9 @@ func TaskWatchFiresWhenTheFileIsReplaced() throws {
     Thread.sleep(forTimeInterval: 0.15)
     check(waitForIncrease(from: 0))
     check(waitForIncrease(from: count()))
+    let stamp = watch.stamp()
+    check(stamp != "missing")
+    check(stamp == watch.stamp())
     watch.stop()
 }
 

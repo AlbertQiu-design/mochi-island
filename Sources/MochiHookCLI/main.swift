@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 
 let stateURL = AppPaths.cursor.appendingPathComponent("mochi-island-tasks.json")
@@ -213,7 +217,18 @@ enum AtomicJSON {
         let temp = url.appendingPathExtension("tmp")
         try data.write(to: temp)
         if FileManager.default.fileExists(atPath: url.path) {
+            #if canImport(Darwin)
             _ = try FileManager.default.replaceItemAt(url, withItemAt: temp)
+            #else
+            let rc = temp.path.withCString { from in
+                url.path.withCString { to in
+                    rename(from, to)
+                }
+            }
+            if rc != 0 {
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+            }
+            #endif
         } else {
             try FileManager.default.moveItem(at: temp, to: url)
         }
