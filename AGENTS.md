@@ -73,3 +73,13 @@ Chinese uses PingFang SC. Task bubbles use the GIFs in `web/status/`. Looks are 
 Bundle ID `com.mochiisland.mac`, the marketing version, and `LSMinimumSystemVersion` stay in `island/Info.plist` and match the Swift package platform (`macOS 26`). Do not turn ATS off. Do not ship an ad-hoc signature. A change in `Sources/MochiCore/` or `Sources/MochiIsland/AppSession.swift` needs a matching change in `Tests/MochiCoreChecks/main.swift`.
 
 Before handing off a build, search `Sources` and `web/island.*` for `127.0.0.1`, `8765`, `fetch(`, `python3`, `osascript`, `NSAllowsArbitraryLoads`, and `killall`. Those strings should not be there. `swift run -c debug MochiCoreChecks` should pass, and the app should open from the built `.app` without this repo.
+
+## Cursor Cloud specific instructions
+
+Cloud Agent VMs are Linux. The environment puts Swift 6.2.4 on `PATH` (`/usr/local/bin/swift`, toolchain under `/opt/swift`). That matches `swift-tools-version: 6.2`. Do not install another toolchain.
+
+`swift run -c debug MochiCoreChecks` is the check to run here. It covers play, sleep, feeding, saves, hook install, and the task-file watch. `swift build --product MochiHookCLI` also builds on Linux. Task watches use inotify on Linux, and JSON replace uses `rename`, because Swift's `replaceItemAt` deletes the destination and then fails. macOS still uses `DispatchSource` and `replaceItemAt`.
+
+`swift build --product MochiIsland` and `Scripts/build-app.sh` need macOS. They link AppKit, WebKit, and ServiceManagement, then sign `island/MochiIsland.app`. Leave the macOS 26 platform as it is.
+
+The page has no dev server. Open `web/island.html` in a browser to review layout. Play, feeding, and Cursor linking still need the Mac app's WebKit bridge. Do not add a local server to stand in for it.
