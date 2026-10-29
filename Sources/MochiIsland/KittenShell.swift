@@ -28,8 +28,7 @@ final class KittenModel: ObservableObject {
 
 final class KittenMouseView: NSView {
     var shadowPad: CGFloat = 0
-    var petScale: CGFloat = 1
-    var testsSpoon = false
+    var testsCapsule = false
     var onDown: (() -> Void)?
     var onDrag: ((CGSize) -> Void)?
     var onUp: ((Bool, NSPoint) -> Void)?
@@ -42,7 +41,7 @@ final class KittenMouseView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let capsule = bounds.insetBy(dx: shadowPad, dy: shadowPad)
         guard capsule.contains(point) else { return nil }
-        if testsSpoon, !SpoonOutline.contains(point, width: bounds.width, height: bounds.height, scale: petScale) {
+        if testsCapsule, !CapsuleOutline.contains(point, width: bounds.width, height: bounds.height) {
             return nil
         }
         return self
@@ -71,17 +70,6 @@ final class KittenMouseView: NSView {
     }
 }
 
-struct SpoonShape: Shape {
-    var scale: CGFloat = 1
-
-    func path(in rect: CGRect) -> Path {
-        let source = SpoonOutline.path(width: rect.width, height: rect.height, scale: scale)
-        var transform = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: rect.minX, ty: rect.maxY)
-        let flipped = source.copy(using: &transform) ?? source
-        return Path(flipped)
-    }
-}
-
 struct KittenRoot: View {
     @ObservedObject var model: KittenModel
     @Namespace private var kittenNS
@@ -95,24 +83,21 @@ struct KittenRoot: View {
         let width = model.capsuleWidth
         let height = model.capsuleHeight
         let kitten = AppConfig.kittenSize * model.petScale
-        let showGlass = width > kitten + 1 || height > kitten + 1
-        let spoon = SpoonShape(scale: model.petScale)
-        VStack(spacing: 0) {
-            kittenWell
-                .frame(maxWidth: .infinity)
-            if model.expanded {
+        let revealed = height > kitten + 1
+        Group {
+            if revealed {
                 menu
-                    .transition(.opacity)
+            } else {
+                kittenWell
             }
         }
         .frame(width: width, height: height, alignment: .top)
         .background {
-            if showGlass {
+            if revealed {
                 GlassEffectContainer {
-                    spoon
+                    Capsule()
                         .fill(.clear)
-                        .glassEffect(.regular, in: spoon)
-                        .matchedGeometryEffect(id: "kitten-base", in: kittenNS)
+                        .glassEffect(.regular, in: Capsule())
                 }
                 .allowsHitTesting(false)
             }
@@ -143,6 +128,8 @@ struct KittenRoot: View {
     private var menu: some View {
         let s = model.petScale
         return VStack(spacing: 0) {
+            Color.clear.frame(height: AppConfig.capsulePadY * s)
+            petRow
             Color.clear.frame(height: AppConfig.dividerGap * s)
             Capsule()
                 .fill(Color.primary.opacity(0.22))
@@ -162,6 +149,24 @@ struct KittenRoot: View {
             symbol("gearshape", label: "Settings")
             Color.clear.frame(height: AppConfig.capsulePadY * s)
         }
+    }
+
+    /// Expanded kitten matches the agent icon and sits in the capsule padding.
+    private var petRow: some View {
+        let s = model.petScale
+        let icon = AppConfig.agentIcon * s
+        return ZStack {
+            FullKitten()
+                .frame(width: icon, height: icon)
+            if model.rows.contains(where: \.showsDot) {
+                Circle()
+                    .fill(Color(red: 1, green: 59 / 255, blue: 48 / 255))
+                    .frame(width: AppConfig.unreadDot * s, height: AppConfig.unreadDot * s)
+                    .offset(x: icon / 2 - 2, y: -icon / 2 + 2)
+            }
+        }
+        .frame(width: icon, height: AppConfig.agentRow * s)
+        .accessibilityLabel("Kitten")
     }
 
     private func agentRow(_ row: KittenRow) -> some View {
@@ -285,27 +290,27 @@ final class KittenShell: NSObject {
         return panel.frame.insetBy(dx: pad, dy: pad)
     }
 
-    /// The rectangular window is only a hit while the pointer is on the kitten or the spoon.
+    /// The rectangular window is only a hit while the pointer is on the kitten or the open capsule.
     func ignoresPointer(at point: NSPoint) -> Bool {
         if trackingPointer || dragging { return false }
         return !containsScreenPoint(point)
     }
 
-    /// True when the point is on the kitten, or on the spoon glass once the capsule is open.
+    /// True when the point is on the kitten, or on the capsule once it is open.
     func containsScreenPoint(_ point: NSPoint, slop: CGFloat = 4) -> Bool {
         let frame = panel.frame
         let padded = frame.insetBy(dx: -slop, dy: -slop)
         guard padded.contains(point) else { return false }
-        let spoon = frame.width > kittenSide + 1 || frame.height > kittenSide + 1
-        if !spoon { return true }
+        let open = frame.height > kittenSide + 1
+        if !open { return true }
         let local = CGPoint(x: point.x - frame.minX, y: point.y - frame.minY)
-        if SpoonOutline.contains(local, width: frame.width, height: frame.height, scale: scale) { return true }
+        if CapsuleOutline.contains(local, width: frame.width, height: frame.height) { return true }
         let inward = CGPoint(
             x: min(max(local.x, 0), frame.width),
             y: min(max(local.y, 0), frame.height)
         )
         let nudged = hypot(inward.x - local.x, inward.y - local.y) <= slop + 0.1
-        return nudged && SpoonOutline.contains(inward, width: frame.width, height: frame.height, scale: scale)
+        return nudged && CapsuleOutline.contains(inward, width: frame.width, height: frame.height)
     }
 
     override init() {
@@ -373,7 +378,6 @@ final class KittenShell: NSObject {
         if scaleChanged {
             scale = nextScale
             model.petScale = nextScale
-            mouse.petScale = nextScale
             stopSpring()
         }
         let token = "\(prefs.kittenPlaced)|\(prefs.kittenX)|\(prefs.kittenY)|\(dock)|\(scale)"
@@ -851,8 +855,7 @@ final class KittenShell: NSObject {
         model.capsuleWidth = frame.width
         model.viewport = model.expanded ? min(springAgentBlock, available) : 0
         model.scroll = min(model.scroll, max(0, springAgentBlock - model.viewport))
-        mouse.testsSpoon = frame.width > kittenSide + 1 || frame.height > kittenSide + 1
-        mouse.petScale = scale
+        mouse.testsCapsule = frame.height > kittenSide + 1
         panel.setFrame(frame, display: true)
         mouse.frame = NSRect(origin: .zero, size: frame.size)
         hosting.frame = mouse.bounds

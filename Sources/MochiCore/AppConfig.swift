@@ -43,13 +43,6 @@ public enum AppConfig {
     public static let kittenSize: CGFloat = 56
     public static let capsuleWidth: CGFloat = 56
     public static let capsuleRadius: CGFloat = 28
-    /// Wide rounded head of the open spoon. The 56pt kitten sits inside it.
-    public static let headWidth: CGFloat = 104
-    public static let headRadius: CGFloat = 26
-    /// Distance from the top of the spoon to where the side starts necking in.
-    public static let spoonNeck: CGFloat = 60
-    /// Vertical run of the concave fillet from the head into the 56pt body.
-    public static let spoonFillet: CGFloat = 16
     public static let capsulePadY: CGFloat = 8
     public static let capsulePadX: CGFloat = 6
     public static let kittenMark: CGFloat = 40

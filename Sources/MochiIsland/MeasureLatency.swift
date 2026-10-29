@@ -483,9 +483,9 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
                 let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
                 let rightAnchor = CGRect(x: 980, y: 400, width: 28, height: 28)
                 let rightCapsule = CGRect(
-                    x: rightAnchor.midX - AppConfig.headWidth / 2,
+                    x: rightAnchor.midX - AppConfig.capsuleWidth / 2,
                     y: 300,
-                    width: AppConfig.headWidth,
+                    width: AppConfig.capsuleWidth,
                     height: 240
                 )
                 let right = BubblePlacer.place(
@@ -496,9 +496,9 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
                 )
                 let leftAnchor = CGRect(x: 24, y: 400, width: 28, height: 28)
                 let leftCapsule = CGRect(
-                    x: leftAnchor.midX - AppConfig.headWidth / 2,
+                    x: leftAnchor.midX - AppConfig.capsuleWidth / 2,
                     y: 300,
-                    width: AppConfig.headWidth,
+                    width: AppConfig.capsuleWidth,
                     height: 240
                 )
                 let left = BubblePlacer.place(

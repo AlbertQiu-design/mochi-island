@@ -50,7 +50,8 @@ public enum ShellGeometry {
             ? 0
             : CGFloat(count) * AppConfig.agentRow + CGFloat(count - 1) * AppConfig.rowGap
         let beforePlus: CGFloat = count == 0 ? 0 : AppConfig.rowGap
-        return (AppConfig.kittenSize
+        return (AppConfig.capsulePadY
+            + AppConfig.agentRow
             + AppConfig.dividerGap
             + AppConfig.dividerHeight
             + AppConfig.dividerGap
@@ -66,7 +67,7 @@ public enum ShellGeometry {
     public static func stack(agentCount: Int, scale: CGFloat = 1) -> (kitten: CGFloat, divider: CGFloat, agents: CGFloat, plus: CGFloat, gear: CGFloat) {
         let s = ShellScale.factor(scale)
         let kitten: CGFloat = 0
-        let divider = (AppConfig.kittenSize + AppConfig.dividerGap) * s
+        let divider = (AppConfig.capsulePadY + AppConfig.agentRow + AppConfig.dividerGap) * s
         let agents = divider + (AppConfig.dividerHeight + AppConfig.dividerGap) * s
         let count = max(0, agentCount)
         let block: CGFloat = count == 0
@@ -104,7 +105,7 @@ public enum ShellGeometry {
         let room = max(kitten, top - visible.minY)
         let height = min(natural, room)
         let scrolls = natural > height + 0.5
-        let width = AppConfig.headWidth * s
+        let width = AppConfig.capsuleWidth * s
         let x = center.x - width / 2
         let y = top - height
         return (CGRect(x: x, y: y, width: width, height: height), scrolls)
@@ -169,102 +170,18 @@ public enum BubblePlacer {
     }
 }
 
-/// Spoon silhouette in y-up coordinates, origin at the bottom left of the bounding box.
-public enum SpoonOutline {
-    public static func path(width: CGFloat, height: CGFloat, scale: CGFloat = 1) -> CGPath {
-        let s = ShellScale.factor(scale)
+/// Constant-width capsule in y-up coordinates, origin at the bottom left.
+public enum CapsuleOutline {
+    public static func contains(_ point: CGPoint, width: CGFloat, height: CGFloat) -> Bool {
         let w = max(width, 1)
         let h = max(height, 1)
-        let bodyW = min(AppConfig.capsuleWidth * s, w)
-        let inset = (w - bodyW) / 2
-        let topR = min(AppConfig.headRadius * s, w / 2, h / 2)
-        let botR = min(bodyW / 2, h / 2)
-        let kitten = AppConfig.kittenSize * s
-        if inset < 1 || h <= kitten + 0.5 {
-            let radius = min(w, h) / 2
-            return CGPath(
-                roundedRect: CGRect(x: 0, y: 0, width: w, height: h),
-                cornerWidth: radius,
-                cornerHeight: radius,
-                transform: nil
-            )
-        }
-
-        let left: CGFloat = 0
-        let right = w
-        let bodyLeft = inset
-        let bodyRight = w - inset
-        let curveStart = min(AppConfig.spoonNeck * s, max(topR, h - botR - 8 * s))
-        var fillet = AppConfig.spoonFillet * s
-        if curveStart + fillet > h - botR {
-            fillet = max(0, h - botR - curveStart)
-        }
-        let curveEnd = curveStart + fillet
-        let curveStartY = h - curveStart
-        let curveEndY = h - curveEnd
-
-        let path = CGMutablePath()
-        path.move(to: CGPoint(x: left + topR, y: h))
-        path.addLine(to: CGPoint(x: right - topR, y: h))
-        path.addArc(
-            center: CGPoint(x: right - topR, y: h - topR),
-            radius: topR,
-            startAngle: .pi / 2,
-            endAngle: 0,
-            clockwise: true
-        )
-        path.addLine(to: CGPoint(x: right, y: curveStartY))
-        if fillet > 0.5 {
-            let handle = fillet * 0.92
-            path.addCurve(
-                to: CGPoint(x: bodyRight, y: curveEndY),
-                control1: CGPoint(x: right, y: curveStartY - handle),
-                control2: CGPoint(x: bodyRight, y: curveEndY + handle)
-            )
-        } else {
-            path.addLine(to: CGPoint(x: bodyRight, y: curveEndY))
-        }
-        path.addLine(to: CGPoint(x: bodyRight, y: botR))
-        path.addArc(
-            center: CGPoint(x: bodyRight - botR, y: botR),
-            radius: botR,
-            startAngle: 0,
-            endAngle: -.pi / 2,
-            clockwise: true
-        )
-        path.addLine(to: CGPoint(x: bodyLeft + botR, y: 0))
-        path.addArc(
-            center: CGPoint(x: bodyLeft + botR, y: botR),
-            radius: botR,
-            startAngle: -.pi / 2,
-            endAngle: .pi,
-            clockwise: true
-        )
-        path.addLine(to: CGPoint(x: bodyLeft, y: curveEndY))
-        if fillet > 0.5 {
-            let handle = fillet * 0.92
-            path.addCurve(
-                to: CGPoint(x: left, y: curveStartY),
-                control1: CGPoint(x: bodyLeft, y: curveEndY + handle),
-                control2: CGPoint(x: left, y: curveStartY - handle)
-            )
-        } else {
-            path.addLine(to: CGPoint(x: left, y: curveStartY))
-        }
-        path.addLine(to: CGPoint(x: left, y: h - topR))
-        path.addArc(
-            center: CGPoint(x: left + topR, y: h - topR),
-            radius: topR,
-            startAngle: .pi,
-            endAngle: .pi / 2,
-            clockwise: true
-        )
-        path.closeSubpath()
-        return path
-    }
-
-    public static func contains(_ point: CGPoint, width: CGFloat, height: CGFloat, scale: CGFloat = 1) -> Bool {
-        path(width: width, height: height, scale: scale).contains(point)
+        guard point.x >= 0, point.y >= 0, point.x <= w, point.y <= h else { return false }
+        let radius = min(w, h) / 2
+        if point.y >= radius, point.y <= h - radius { return true }
+        let centerY: CGFloat = point.y < radius ? radius : h - radius
+        let dx = point.x - w / 2
+        let dy = point.y - centerY
+        return dx * dx + dy * dy <= radius * radius + 0.25
     }
 }
 
