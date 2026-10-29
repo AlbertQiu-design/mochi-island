@@ -10,15 +10,31 @@
 		</data>
 		<key>Resources/Web/island.css</key>
 		<data>
-		tepd57NXPybEqB424iDGK3JNJ/w=
+		aD//VHzWXYbUglmctcnJi99Vsdk=
 		</data>
 		<key>Resources/Web/island.html</key>
 		<data>
-		3cvZ8+YSBpq07qQlNl4voUEZ1Vc=
+		FVUdz+8PiFCUJ2MX/LOcMs7EwjY=
 		</data>
 		<key>Resources/Web/island.js</key>
 		<data>
-		dNGf+MKmQ/xKwLbazflGa0Ah8hM=
+		fR2TELJvXDR69wLo1ehYmOl/2IM=
+		</data>
+		<key>Resources/Web/pets/agent-codex.svg</key>
+		<data>
+		4RuXO/uaS8Sm7Sc/JTJmmRaWRMM=
+		</data>
+		<key>Resources/Web/pets/agent-cursor.svg</key>
+		<data>
+		azGbDavbZAARXXcKIH/NbcwWbx4=
+		</data>
+		<key>Resources/Web/pets/agent-gpt.svg</key>
+		<data>
+		iayWpeuQHzhtCydzfv3z1c7x6Ww=
+		</data>
+		<key>Resources/Web/pets/agent-grok.svg</key>
+		<data>
+		ZDfUQ8WQ2ifHAEAn0/kyNeMh4/0=
 		</data>
 		<key>Resources/Web/pets/angry.png</key>
 		<data>
@@ -72,6 +88,10 @@
 		<data>
 		A431QDwX4gLfYVdz17BrAbdOXYk=
 		</data>
+		<key>Resources/Web/pets/kitten-mark.svg</key>
+		<data>
+		EPO9MDkBi6MCCmkTW/5L/eaYNRw=
+		</data>
 		<key>Resources/Web/pets/kitten-wait.png</key>
 		<data>
 		qz7OO5Z96UjgoNd5aE2S6NPt11g=
@@ -115,10 +135,10 @@
 		<dict>
 			<key>cdhash</key>
 			<data>
-			jCo4QEN/4EcVk/izdarlvRNcx38=
+			CMsStTHxDUozRsH6Ppg9pjSwfOs=
 			</data>
 			<key>requirement</key>
-			<string>cdhash H"8c2a3840437fe0471593f8b375aae5bd135cc77f" or cdhash H"f6778cc2674e15cca90c8a061559abe21c24294c"</string>
+			<string>cdhash H"08cb12b531f10d4a3346c1fa3e983da634b07ceb" or cdhash H"40c563492bc966bdb859b006660d9c3e37d2b70f"</string>
 		</dict>
 		<key>Resources/AppIcon.icns</key>
 		<dict>
@@ -131,21 +151,49 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			JcRvUyoLy67ehJKa5imFKGW3tbtyvckbtjqTN0B+BQ0=
+			tLq7x0BV6R7s8VKnXlataTnUkVV6/5th2zJ23Ri13zc=
 			</data>
 		</dict>
 		<key>Resources/Web/island.html</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			LTdp1J/f9C90yrZyR08enWegAIZeEbWLGpU00zpmchw=
+			2goYBxlHyect2q4Gin1JcYzzGpJnjqLg8qZVfo0ial8=
 			</data>
 		</dict>
 		<key>Resources/Web/island.js</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			yGpX1z9aIGCclgnzhe1UCrBaqMtAGEiKbSti3hVy0Hk=
+			Z8qvQNgv+L9fqkfbiW8Ifeht+0QneTM3Nsx17UlHa6Y=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/agent-codex.svg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			zCoJtwzRWWIxIYo+mBwqItgFxtmKk38d0/74YrUC0BI=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/agent-cursor.svg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			abTueihNl4qYPenaQjdFBSk0fYnp6CpkGyHm+cbR+yk=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/agent-gpt.svg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			50n0TaRYvMdoBrqfSJ2fbFqNIrjZ1HA9oYVA1KPETY8=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/agent-grok.svg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			sFdZmrEBy9OhUhxjKGGWE3x6acZpmigHoPOuJ/HFqXU=
 			</data>
 		</dict>
 		<key>Resources/Web/pets/angry.png</key>
@@ -237,6 +285,13 @@
 			<key>hash2</key>
 			<data>
 			oxmKa71IHNjSlBcS3/ruLUQiEc1gcfUPI89mas9OL9g=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/kitten-mark.svg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			HH6wP9kZiM9jNdWzH4ADsj0V8bQxSbOnnf25tJYkRE4=
 			</data>
 		</dict>
 		<key>Resources/Web/pets/kitten-wait.png</key>

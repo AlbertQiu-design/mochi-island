@@ -54,7 +54,8 @@ public struct CursorTask: Equatable {
             "options": options,
             "allow_multiple": allowMultiple,
             "question_id": questionID,
-            "request_id": requestID
+            "request_id": requestID,
+            "updated": updated
         ]
     }
 }

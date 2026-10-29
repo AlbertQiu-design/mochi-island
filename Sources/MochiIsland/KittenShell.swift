@@ -2,17 +2,15 @@ import AppKit
 import MochiCore
 import SwiftUI
 
-struct KittenRow: Identifiable, Equatable {
+struct KittenRow: Identifiable {
     var id: String
     var source: String
     var title: String
     var status: String
     var read: Bool
+    var showsDot: Bool
+    var memberIDs: [String]
     var icon: NSImage?
-
-    var showsDot: Bool {
-        !read && (status == "wait" || status == "done" || status == "fail")
-    }
 }
 
 @MainActor
@@ -23,10 +21,15 @@ final class KittenModel: ObservableObject {
     @Published var scroll: CGFloat = 0
     @Published var viewport: CGFloat = 0
     @Published var capsuleHeight: CGFloat = AppConfig.kittenSize
+    @Published var capsuleWidth: CGFloat = AppConfig.kittenSize
+    @Published var petScale: CGFloat = 1
+    @Published var selectionMoving = false
 }
 
 final class KittenMouseView: NSView {
     var shadowPad: CGFloat = 0
+    var petScale: CGFloat = 1
+    var testsSpoon = false
     var onDown: (() -> Void)?
     var onDrag: ((CGSize) -> Void)?
     var onUp: ((Bool, NSPoint) -> Void)?
@@ -38,7 +41,11 @@ final class KittenMouseView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         let capsule = bounds.insetBy(dx: shadowPad, dy: shadowPad)
-        return capsule.contains(point) ? self : nil
+        guard capsule.contains(point) else { return nil }
+        if testsSpoon, !SpoonOutline.contains(point, width: bounds.width, height: bounds.height, scale: petScale) {
+            return nil
+        }
+        return self
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -64,6 +71,17 @@ final class KittenMouseView: NSView {
     }
 }
 
+struct SpoonShape: Shape {
+    var scale: CGFloat = 1
+
+    func path(in rect: CGRect) -> Path {
+        let source = SpoonOutline.path(width: rect.width, height: rect.height, scale: scale)
+        var transform = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: rect.minX, ty: rect.maxY)
+        let flipped = source.copy(using: &transform) ?? source
+        return Path(flipped)
+    }
+}
+
 struct KittenRoot: View {
     @ObservedObject var model: KittenModel
     @Namespace private var kittenNS
@@ -74,55 +92,63 @@ struct KittenRoot: View {
     }
 
     var body: some View {
-        let height = model.expanded ? model.capsuleHeight : AppConfig.kittenSize
+        let width = model.capsuleWidth
+        let height = model.capsuleHeight
+        let kitten = AppConfig.kittenSize * model.petScale
+        let showGlass = width > kitten + 1 || height > kitten + 1
+        let spoon = SpoonShape(scale: model.petScale)
         VStack(spacing: 0) {
             kittenWell
+                .frame(maxWidth: .infinity)
             if model.expanded {
                 menu
                     .transition(.opacity)
             }
         }
-        .frame(width: AppConfig.capsuleWidth, height: height, alignment: .top)
+        .frame(width: width, height: height, alignment: .top)
         .background {
-            if model.expanded {
+            if showGlass {
                 GlassEffectContainer {
-                    Capsule(style: .continuous)
+                    spoon
                         .fill(.clear)
-                        .glassEffect(.regular, in: .capsule)
+                        .glassEffect(.regular, in: spoon)
                         .matchedGeometryEffect(id: "kitten-base", in: kittenNS)
                 }
                 .allowsHitTesting(false)
             }
         }
         .animation(spring, value: model.expanded)
+        .animation(spring, value: model.selected)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     /// Collapsed is the artwork alone. The glass capsule exists only after the kitten is opened.
     private var kittenWell: some View {
-        ZStack {
+        let side = AppConfig.kittenSize * model.petScale
+        return ZStack {
             FullKitten()
-                .frame(width: AppConfig.kittenSize, height: AppConfig.kittenSize)
+                .frame(width: side, height: side)
                 .matchedGeometryEffect(id: "kitten-art", in: kittenNS)
             if model.rows.contains(where: \.showsDot) {
                 Circle()
                     .fill(Color(red: 1, green: 59 / 255, blue: 48 / 255))
-                    .frame(width: AppConfig.unreadDot, height: AppConfig.unreadDot)
+                    .frame(width: AppConfig.unreadDot * model.petScale, height: AppConfig.unreadDot * model.petScale)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding(6)
+                    .padding(6 * model.petScale)
             }
         }
-        .frame(width: AppConfig.kittenSize, height: AppConfig.kittenSize)
+        .frame(width: side, height: side)
     }
 
     private var menu: some View {
-        VStack(spacing: 0) {
-            Color.clear.frame(height: AppConfig.dividerGap)
+        let s = model.petScale
+        return VStack(spacing: 0) {
+            Color.clear.frame(height: AppConfig.dividerGap * s)
             Capsule()
                 .fill(Color.primary.opacity(0.22))
-                .frame(width: AppConfig.dividerWidth, height: AppConfig.dividerHeight)
-            Color.clear.frame(height: AppConfig.dividerGap)
-            VStack(spacing: AppConfig.rowGap) {
+                .frame(width: AppConfig.dividerWidth * s, height: AppConfig.dividerHeight * s)
+            Color.clear.frame(height: AppConfig.dividerGap * s)
+            VStack(spacing: AppConfig.rowGap * s) {
                 ForEach(model.rows) { row in
                     agentRow(row)
                 }
@@ -130,11 +156,11 @@ struct KittenRoot: View {
             .offset(y: -model.scroll)
             .frame(height: model.rows.isEmpty ? 0 : model.viewport, alignment: .top)
             .clipped()
-            .padding(.bottom, model.rows.isEmpty ? 0 : AppConfig.rowGap)
+            .padding(.bottom, model.rows.isEmpty ? 0 : AppConfig.rowGap * s)
             symbol("plus", label: "Add")
-            Color.clear.frame(height: AppConfig.rowGap)
+            Color.clear.frame(height: AppConfig.rowGap * s)
             symbol("gearshape", label: "Settings")
-            Color.clear.frame(height: AppConfig.capsulePadY)
+            Color.clear.frame(height: AppConfig.capsulePadY * s)
         }
     }
 
@@ -142,23 +168,41 @@ struct KittenRoot: View {
         let selected = model.selected == row.id
         return ZStack {
             if selected {
-                RoundedRectangle(cornerRadius: AppConfig.selectedRadius, style: .continuous)
-                    .fill(Color.primary.opacity(0.14))
-                    .matchedGeometryEffect(id: "agent-selection", in: selectionNS)
+                selectionPlate
             }
             ZStack(alignment: .topTrailing) {
                 rowIcon(row)
-                    .frame(width: AppConfig.agentIcon, height: AppConfig.agentIcon)
+                    .frame(width: AppConfig.agentIcon * model.petScale, height: AppConfig.agentIcon * model.petScale)
                 if row.showsDot {
                     Circle()
                         .fill(Color(red: 1, green: 59 / 255, blue: 48 / 255))
-                        .frame(width: AppConfig.unreadDot, height: AppConfig.unreadDot)
-                        .offset(x: 3, y: -3)
+                        .frame(width: AppConfig.unreadDot * model.petScale, height: AppConfig.unreadDot * model.petScale)
+                        .offset(x: 3 * model.petScale, y: -3 * model.petScale)
                 }
             }
         }
-        .frame(width: AppConfig.agentIcon + 8, height: AppConfig.agentRow)
+        .frame(width: (AppConfig.agentIcon + 8) * model.petScale, height: AppConfig.agentRow * model.petScale)
         .accessibilityLabel(row.title)
+    }
+
+    /// Glass only while the highlight is traveling. At rest it is a flat fill, not a second glass layer.
+    @ViewBuilder
+    private var selectionPlate: some View {
+        let shape = RoundedRectangle(cornerRadius: AppConfig.selectedRadius * model.petScale, style: .continuous)
+        Group {
+            if model.selectionMoving {
+                GlassEffectContainer {
+                    shape
+                        .fill(.clear)
+                        .glassEffect(.regular, in: shape)
+                }
+            } else {
+                shape
+                    .fill(Color.primary.opacity(0.2))
+            }
+        }
+        .matchedGeometryEffect(id: "agent-selection", in: selectionNS)
+        .frame(width: (AppConfig.agentIcon + 12) * model.petScale, height: (AppConfig.agentRow - 8) * model.petScale)
     }
 
     @ViewBuilder
@@ -167,17 +211,18 @@ struct KittenRoot: View {
             Image(nsImage: icon)
                 .resizable()
                 .interpolation(.high)
-                .frame(width: AppConfig.agentIcon, height: AppConfig.agentIcon)
+                .frame(width: AppConfig.agentIcon * model.petScale, height: AppConfig.agentIcon * model.petScale)
         } else {
             AgentMark(source: row.source)
+                .frame(width: AppConfig.agentIcon * model.petScale, height: AppConfig.agentIcon * model.petScale)
         }
     }
 
     private func symbol(_ name: String, label: String) -> some View {
         Image(systemName: name)
-            .font(.system(size: AppConfig.symbolSize, weight: .semibold))
+            .font(.system(size: AppConfig.symbolSize * model.petScale, weight: .semibold))
             .foregroundStyle(.primary)
-            .frame(width: AppConfig.capsuleWidth - AppConfig.capsulePadX * 2, height: AppConfig.controlRow)
+            .frame(width: (AppConfig.capsuleWidth - AppConfig.capsulePadX * 2) * model.petScale, height: AppConfig.controlRow * model.petScale)
             .accessibilityLabel(label)
     }
 }
@@ -207,8 +252,19 @@ final class KittenShell: NSObject {
     private var iconCache: [String: NSImage] = [:]
     private var springTimer: Timer?
     private var springHeight: CGFloat = AppConfig.kittenSize
+    private var springWidth: CGFloat = AppConfig.kittenSize
     private var springVelocity: CGFloat = 0
+    private var springWidthVelocity: CGFloat = 0
     private var springTarget: NSRect?
+    private var springAgentBlock: CGFloat = 0
+    private var springAgentsTop: CGFloat = 0
+    private var springTail: CGFloat = 0
+    private var selectionTicket = 0
+    private var pinnedIDs: Set<String> = []
+    private var trackingPointer = false
+    private var scale: CGFloat = 1
+
+    private var kittenSide: CGFloat { AppConfig.kittenSize * scale }
 
     var onSettings: (() -> Void)?
     var onChoice: (([String: Any]) -> [String: Any])?
@@ -227,6 +283,29 @@ final class KittenShell: NSObject {
     var hitFrame: NSRect {
         let pad = model.expanded ? Self.shadowPad : 0
         return panel.frame.insetBy(dx: pad, dy: pad)
+    }
+
+    /// The rectangular window is only a hit while the pointer is on the kitten or the spoon.
+    func ignoresPointer(at point: NSPoint) -> Bool {
+        if trackingPointer || dragging { return false }
+        return !containsScreenPoint(point)
+    }
+
+    /// True when the point is on the kitten, or on the spoon glass once the capsule is open.
+    func containsScreenPoint(_ point: NSPoint, slop: CGFloat = 4) -> Bool {
+        let frame = panel.frame
+        let padded = frame.insetBy(dx: -slop, dy: -slop)
+        guard padded.contains(point) else { return false }
+        let spoon = frame.width > kittenSide + 1 || frame.height > kittenSide + 1
+        if !spoon { return true }
+        let local = CGPoint(x: point.x - frame.minX, y: point.y - frame.minY)
+        if SpoonOutline.contains(local, width: frame.width, height: frame.height, scale: scale) { return true }
+        let inward = CGPoint(
+            x: min(max(local.x, 0), frame.width),
+            y: min(max(local.y, 0), frame.height)
+        )
+        let nudged = hypot(inward.x - local.x, inward.y - local.y) <= slop + 0.1
+        return nudged && SpoonOutline.contains(inward, width: frame.width, height: frame.height, scale: scale)
     }
 
     override init() {
@@ -289,23 +368,32 @@ final class KittenShell: NSObject {
     func apply(prefs: IslandPrefs, force: Bool = false) {
         timbre = IslandPrefs.soundIDs.contains(prefs.sound) ? prefs.sound : "boop"
         dock = prefs.dock == "left" ? "left" : "right"
-        let token = "\(prefs.kittenPlaced)|\(prefs.kittenX)|\(prefs.kittenY)|\(dock)"
-        guard force || token != positionToken || !positioned else { return }
+        let nextScale = ShellScale.factor(prefs.petScale)
+        let scaleChanged = abs(nextScale - scale) > 0.001
+        if scaleChanged {
+            scale = nextScale
+            model.petScale = nextScale
+            mouse.petScale = nextScale
+            stopSpring()
+        }
+        let token = "\(prefs.kittenPlaced)|\(prefs.kittenX)|\(prefs.kittenY)|\(dock)|\(scale)"
+        guard force || scaleChanged || token != positionToken || !positioned else { return }
         positionToken = token
         let boxes = canvas()
         if prefs.kittenPlaced {
             anchor = ShellGeometry.anchor(x: prefs.kittenX, y: prefs.kittenY, screen: boxes.full)
         } else if dock == "left" {
-            anchor = ShellGeometry.leftAnchor(screen: boxes.full, visible: boxes.visible)
+            anchor = ShellGeometry.leftAnchor(screen: boxes.full, visible: boxes.visible, scale: scale)
         } else {
-            anchor = ShellGeometry.defaultAnchor(screen: boxes.full, visible: boxes.visible)
+            anchor = ShellGeometry.defaultAnchor(screen: boxes.full, visible: boxes.visible, scale: scale)
         }
-        anchor = ShellGeometry.clampCenter(anchor, size: AppConfig.kittenSize, visible: boxes.visible)
+        anchor = ShellGeometry.clampCenter(anchor, size: kittenSide, visible: boxes.visible)
         positioned = true
         layout()
+        if bubble.visible { repositionBubble() }
     }
 
-    func sync(slots: [[String: Any]], selected: String, tasks: [[String: Any]], dock: String) {
+    func sync(slots: [[String: Any]], selected _: String, tasks: [[String: Any]], dock: String) {
         self.dock = dock == "left" ? "left" : "right"
         rememberTasks(tasks)
         var taskByID: [String: [String: Any]] = [:]
@@ -317,29 +405,59 @@ final class KittenShell: NSObject {
                 if !status.isEmpty { remembered[id] = status }
             }
         }
-        model.rows = slots.compactMap { raw in
+        let previousSource = model.rows.first { $0.id == model.selected }?.source
+        let candidates: [AgentIconCandidate] = slots.compactMap { raw in
             let id = string(raw["id"])
             guard !id.isEmpty else { return nil }
             let source = AgentLaunch.normalize(string(raw["source"]))
             if source == "mochi" && taskByID[id] == nil { return nil }
             let task = taskByID[id]
-            let status = task.map { string($0["status"]) } ?? remembered[id] ?? ""
+            let live = task.map { string($0["status"]) } ?? ""
+            let stored = string(raw["status"])
+            let status: String
+            if !live.isEmpty {
+                status = live
+            } else if let memory = remembered[id], !memory.isEmpty {
+                status = memory
+            } else if stored == "done" || stored == "fail" {
+                status = stored
+            } else {
+                status = ""
+            }
             if task == nil && status.isEmpty && id.hasPrefix("seed-") { return nil }
             let title = string(raw["title"])
-            return KittenRow(
+            let updated = number(task?["updated"])
+            let created = number(raw["created"])
+            return AgentIconCandidate(
                 id: id,
                 source: source,
                 title: title.isEmpty ? SlotFace.displayName(for: source) : title,
                 status: status,
                 read: bool(raw["read"]),
-                icon: cachedIcon(source)
+                updated: updated > 0 ? updated : created
+            )
+        }
+        model.rows = AgentIconList.rows(candidates, holding: pinnedIDs).map { row in
+            KittenRow(
+                id: row.id,
+                source: row.source,
+                title: row.title,
+                status: row.status,
+                read: row.read,
+                showsDot: row.showsDot,
+                memberIDs: row.memberIDs,
+                icon: cachedIcon(row.source)
             )
         }
         if !model.selected.isEmpty, !model.rows.contains(where: { $0.id == model.selected }) {
-            model.selected = ""
-        }
-        if model.selected.isEmpty, !selected.isEmpty, model.rows.contains(where: { $0.id == selected }) {
-            model.selected = selected
+            if (bubble.visible || !pinnedIDs.isEmpty),
+               let previousSource,
+               let row = model.rows.first(where: { $0.source == previousSource }) {
+                model.selected = row.id
+                pinnedIDs = Set(row.memberIDs)
+            } else {
+                model.selected = ""
+            }
         }
         ensurePosition()
         if !dragging { layout() }
@@ -367,9 +485,10 @@ final class KittenShell: NSObject {
     }
 
     func presentAlert(id: String) {
-        guard let index = model.rows.firstIndex(where: { $0.id == id }) else { return }
-        showCard(index: index, kind: .alert, sound: false)
-        let event: SoundPlayer.Event = model.rows[index].status == "done" ? .done : .alert
+        guard let index = model.rows.firstIndex(where: { $0.id == id || $0.memberIDs.contains(id) }) else { return }
+        showCard(index: index, kind: .alert, sound: false, taskID: id)
+        let status = string(taskCache[id]?["status"])
+        let event: SoundPlayer.Event = status == "done" ? .done : .alert
         SoundPlayer.shared.play(event, timbre: timbre)
     }
 
@@ -423,6 +542,7 @@ final class KittenShell: NSObject {
             guard let self else { return }
             self.dragFrame = self.hitFrame
             self.dragging = false
+            self.trackingPointer = true
         }
         mouse.onDrag = { [weak self] delta in
             guard let self else { return }
@@ -435,26 +555,29 @@ final class KittenShell: NSObject {
             frame.origin.x = min(max(frame.origin.x, visible.minX), max(visible.minX, visible.maxX - frame.width))
             frame.origin.y = min(max(frame.origin.y, visible.minY), max(visible.minY, visible.maxY - frame.height))
             self.panel.setFrame(frame, display: true)
-            self.anchor = CGPoint(x: frame.midX, y: frame.maxY - AppConfig.kittenSize / 2)
+            self.anchor = CGPoint(x: frame.midX, y: frame.maxY - self.kittenSide / 2)
             self.repositionBubble()
         }
         mouse.onUp = { [weak self] dragged, local in
             guard let self else { return }
             if dragged {
                 let ratios = ShellGeometry.ratios(anchor: self.anchor, screen: self.canvas().full)
-                self.positionToken = "true|\(ratios.x)|\(ratios.y)|\(ratios.x < 0.5 ? "left" : "right")"
                 self.dock = ratios.x < 0.5 ? "left" : "right"
+                self.positionToken = "true|\(ratios.x)|\(ratios.y)|\(self.dock)|\(self.scale)"
                 self.onPosition?(ratios.x, ratios.y)
                 self.layout()
             } else {
                 self.click(at: local)
             }
             self.dragging = false
+            self.trackingPointer = false
         }
         mouse.onScroll = { [weak self] delta in
             guard let self, self.model.expanded else { return }
             let count = self.model.rows.count
-            let block: CGFloat = count == 0 ? 0 : CGFloat(count) * AppConfig.agentRow + CGFloat(count - 1) * AppConfig.rowGap
+            let row = AppConfig.agentRow * self.scale
+            let gap = AppConfig.rowGap * self.scale
+            let block: CGFloat = count == 0 ? 0 : CGFloat(count) * row + CGFloat(max(0, count - 1)) * gap
             let maxScroll = max(0, block - self.model.viewport)
             self.model.scroll = min(max(0, self.model.scroll - delta), maxScroll)
         }
@@ -516,7 +639,7 @@ final class KittenShell: NSObject {
     }
 
     private func outside(_ point: NSPoint) {
-        if hitFrame.insetBy(dx: -4, dy: -4).contains(point) { return }
+        if containsScreenPoint(point) { return }
         if let bubbleFrame = interactiveBubbleFrame, bubbleFrame.insetBy(dx: -4, dy: -4).contains(point) { return }
         if protectedFrames().contains(where: { $0.insetBy(dx: -4, dy: -4).contains(point) }) { return }
         collapseFromOutside()
@@ -568,14 +691,20 @@ final class KittenShell: NSObject {
             return
         }
         showCard(index: index, kind: .card, sound: true)
-        onRead?(row.id)
-        model.rows[index].read = true
     }
 
     private func togglePicker() {
         if bubble.visible && bubble.model.kind == .picker {
             closeBubble(retire: false)
             return
+        }
+        if bubble.visible {
+            bubble.hide()
+            model.selected = ""
+            model.selectionMoving = false
+            selectionTicket += 1
+            pinnedIDs = []
+            onRetire?()
         }
         model.selected = ""
         bubble.model.kind = .picker
@@ -586,35 +715,84 @@ final class KittenShell: NSObject {
         bubble.model.options = []
         bubble.model.taskID = ""
         SoundPlayer.shared.play(.select, timbre: timbre)
-        bubble.show(anchor: plusFrame(), screen: canvas().visible)
+        bubble.show(anchor: plusFrame(), capsule: hitFrame, screen: canvas().visible)
     }
 
-    private func showCard(index: Int, kind: BubbleKind, sound: Bool) {
+    private func showCard(index: Int, kind: BubbleKind, sound: Bool, taskID: String? = nil) {
         guard model.rows.indices.contains(index) else { return }
-        let row = model.rows[index]
-        model.selected = row.id
-        let task = taskFields(for: row)
+        var rowIndex = index
+        var row = model.rows[rowIndex]
+        let nextPins = Set(row.memberIDs)
+        if !pinnedIDs.isEmpty && pinnedIDs.isDisjoint(with: nextPins) {
+            pinnedIDs = []
+            onRetire?()
+            guard let fresh = model.rows.firstIndex(where: { $0.id == row.id || $0.memberIDs.contains(row.id) }) else { return }
+            rowIndex = fresh
+            row = model.rows[fresh]
+        }
+        if kind == .card {
+            pinnedIDs = Set(row.memberIDs)
+            for id in row.memberIDs {
+                onRead?(id)
+            }
+            if let fresh = model.rows.firstIndex(where: { $0.id == row.id }) {
+                model.rows[fresh].read = true
+                model.rows[fresh].showsDot = false
+                row = model.rows[fresh]
+            }
+        }
+        let focusID = taskID ?? row.id
+        selectRow(row.id)
+        let task = taskFields(id: focusID, fallback: row)
         bubble.model.kind = kind
-        bubble.model.title = row.title
+        let focusStatus = string(taskCache[focusID]?["status"])
+        let focusTitle = string(taskCache[focusID]?["title"])
+        bubble.model.title = focusTitle.isEmpty ? row.title : focusTitle
         bubble.model.appName = SlotFace.displayName(for: row.source)
         bubble.model.source = row.source
         bubble.model.icon = row.icon
-        bubble.model.status = statusLine(row.status)
+        bubble.model.status = statusLine(focusStatus.isEmpty ? row.status : focusStatus)
         bubble.model.summary = task.summary
         bubble.model.options = task.options
-        bubble.model.taskID = row.id
+        bubble.model.taskID = focusID
         bubble.model.requestID = task.requestID
         bubble.model.questionID = task.questionID
         bubble.model.taskKind = task.kind
         if sound { SoundPlayer.shared.play(.select, timbre: timbre) }
-        let anchor = model.expanded ? iconFrame(index) : hitFrame
-        bubble.show(anchor: anchor, screen: canvas().visible)
+        let anchor = model.expanded ? iconFrame(rowIndex) : hitFrame
+        bubble.show(anchor: anchor, capsule: hitFrame, screen: canvas().visible)
+    }
+
+    private func selectRow(_ id: String) {
+        let changed = !id.isEmpty && model.selected != id
+        guard changed else {
+            model.selected = id
+            return
+        }
+        selectionTicket += 1
+        let ticket = selectionTicket
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+            model.selected = id
+            model.selectionMoving = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.selectionTicket == ticket else { return }
+                let transaction = Transaction(animation: nil)
+                withTransaction(transaction) {
+                    self.model.selectionMoving = false
+                }
+            }
+        }
     }
 
     private func closeBubble(retire: Bool) {
         let was = bubble.visible
         bubble.hide()
         model.selected = ""
+        model.selectionMoving = false
+        selectionTicket += 1
+        pinnedIDs = []
         if was && retire { onRetire?() }
     }
 
@@ -628,7 +806,7 @@ final class KittenShell: NSObject {
         } else {
             anchor = model.expanded ? hitFrame : hitFrame
         }
-        bubble.show(anchor: anchor, screen: canvas().visible)
+        bubble.show(anchor: anchor, capsule: hitFrame, screen: canvas().visible)
     }
 
     private func layout(animated: Bool = false) {
@@ -637,52 +815,62 @@ final class KittenShell: NSObject {
             anchorCenter: anchor,
             expanded: model.expanded,
             agentCount: model.rows.count,
-            visible: boxes.visible
+            visible: boxes.visible,
+            scale: scale
         )
         let count = model.rows.count
-        let block: CGFloat = count == 0 ? 0 : CGFloat(count) * AppConfig.agentRow + CGFloat(count - 1) * AppConfig.rowGap
-        let tops = ShellGeometry.stack(agentCount: count)
-        let tail = (count == 0 ? 0 : AppConfig.rowGap) + AppConfig.controlRow + AppConfig.rowGap + AppConfig.controlRow + AppConfig.capsulePadY
+        let block: CGFloat = count == 0 ? 0 : (CGFloat(count) * AppConfig.agentRow + CGFloat(count - 1) * AppConfig.rowGap) * scale
+        let tops = ShellGeometry.stack(agentCount: count, scale: scale)
+        let tail = ((count == 0 ? 0 : AppConfig.rowGap) + AppConfig.controlRow + AppConfig.rowGap + AppConfig.controlRow + AppConfig.capsulePadY) * scale
         mouse.shadowPad = 0
+        springAgentBlock = block
+        springAgentsTop = tops.agents
+        springTail = tail
         if dragging {
             stopSpring()
-            applyFrame(placed.frame, agentBlock: block, agentsTop: tops.agents, tail: tail)
+            applyFrame(placed.frame)
             return
         }
         if animated || springTimer != nil {
             if springTimer == nil {
                 springHeight = panel.frame.height
+                springWidth = panel.frame.width
                 springVelocity = 0
+                springWidthVelocity = 0
             }
             springTarget = placed.frame
-            startSpring(agentBlock: block, agentsTop: tops.agents, tail: tail)
+            startSpring()
             return
         }
-        applyFrame(placed.frame, agentBlock: block, agentsTop: tops.agents, tail: tail)
+        applyFrame(placed.frame)
     }
 
-    private func applyFrame(_ frame: NSRect, agentBlock: CGFloat, agentsTop: CGFloat, tail: CGFloat) {
-        let available = max(0, frame.height - agentsTop - tail)
+    private func applyFrame(_ frame: NSRect) {
+        let available = max(0, frame.height - springAgentsTop - springTail)
         model.capsuleHeight = frame.height
-        model.viewport = model.expanded ? min(agentBlock, available) : 0
-        model.scroll = min(model.scroll, max(0, agentBlock - model.viewport))
+        model.capsuleWidth = frame.width
+        model.viewport = model.expanded ? min(springAgentBlock, available) : 0
+        model.scroll = min(model.scroll, max(0, springAgentBlock - model.viewport))
+        mouse.testsSpoon = frame.width > kittenSide + 1 || frame.height > kittenSide + 1
+        mouse.petScale = scale
         panel.setFrame(frame, display: true)
         mouse.frame = NSRect(origin: .zero, size: frame.size)
         hosting.frame = mouse.bounds
     }
 
-    private func startSpring(agentBlock: CGFloat, agentsTop: CGFloat, tail: CGFloat) {
+    private func startSpring() {
         guard springTimer == nil else { return }
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.stepSpring(agentBlock: agentBlock, agentsTop: agentsTop, tail: tail)
+                self?.stepSpring()
             }
         }
         springTimer = timer
         RunLoop.main.add(timer, forMode: .common)
+        stepSpring()
     }
 
-    private func stepSpring(agentBlock: CGFloat, agentsTop: CGFloat, tail: CGFloat) {
+    private func stepSpring() {
         guard let target = springTarget else {
             stopSpring()
             return
@@ -691,36 +879,43 @@ final class KittenShell: NSObject {
         let response = 0.42
         let damping = 0.78
         let omega = 2 * Double.pi / response
-        let delta = Double(target.height - springHeight)
-        let accel = omega * omega * delta - 2 * damping * omega * Double(springVelocity)
-        springVelocity += CGFloat(accel * dt)
+        let heightDelta = Double(target.height - springHeight)
+        let widthDelta = Double(target.width - springWidth)
+        let heightAccel = omega * omega * heightDelta - 2 * damping * omega * Double(springVelocity)
+        let widthAccel = omega * omega * widthDelta - 2 * damping * omega * Double(springWidthVelocity)
+        springVelocity += CGFloat(heightAccel * dt)
+        springWidthVelocity += CGFloat(widthAccel * dt)
         springHeight += CGFloat(Double(springVelocity) * dt)
-        if springHeight < AppConfig.kittenSize { springHeight = AppConfig.kittenSize }
-        if abs(delta) < 0.6, abs(springVelocity) < 14 {
+        springWidth += CGFloat(Double(springWidthVelocity) * dt)
+        if springHeight < kittenSide { springHeight = kittenSide }
+        if springWidth < kittenSide { springWidth = kittenSide }
+        if abs(heightDelta) < 0.6, abs(springVelocity) < 14, abs(widthDelta) < 0.6, abs(springWidthVelocity) < 14 {
             springHeight = target.height
+            springWidth = target.width
             stopSpring()
         }
         let frame = NSRect(
-            x: target.minX,
+            x: target.midX - springWidth / 2,
             y: target.maxY - springHeight,
-            width: target.width,
+            width: springWidth,
             height: springHeight
         )
-        applyFrame(frame, agentBlock: agentBlock, agentsTop: agentsTop, tail: tail)
+        applyFrame(frame)
     }
 
     private func stopSpring() {
         springTimer?.invalidate()
         springTimer = nil
         springVelocity = 0
+        springWidthVelocity = 0
     }
 
     private func ensurePosition() {
         guard !positioned else { return }
         let boxes = canvas()
         anchor = dock == "left"
-            ? ShellGeometry.leftAnchor(screen: boxes.full, visible: boxes.visible)
-            : ShellGeometry.defaultAnchor(screen: boxes.full, visible: boxes.visible)
+            ? ShellGeometry.leftAnchor(screen: boxes.full, visible: boxes.visible, scale: scale)
+            : ShellGeometry.defaultAnchor(screen: boxes.full, visible: boxes.visible, scale: scale)
         positioned = true
     }
 
@@ -742,39 +937,45 @@ final class KittenShell: NSObject {
         let fromTop = mouse.bounds.height - local.y - pad
         guard fromTop >= 0 else { return nil }
         if !model.expanded { return .kitten }
-        let tops = ShellGeometry.stack(agentCount: model.rows.count)
+        let tops = ShellGeometry.stack(agentCount: model.rows.count, scale: scale)
         if fromTop < tops.agents { return .kitten }
-        let plusTop = tops.agents + (model.rows.isEmpty ? 0 : model.viewport + AppConfig.rowGap)
-        if !model.rows.isEmpty && fromTop < plusTop - AppConfig.rowGap {
+        let gap = AppConfig.rowGap * scale
+        let row = AppConfig.agentRow * scale
+        let control = AppConfig.controlRow * scale
+        let plusTop = tops.agents + (model.rows.isEmpty ? 0 : model.viewport + gap)
+        if !model.rows.isEmpty && fromTop < plusTop - gap {
             let contentY = fromTop - tops.agents + model.scroll
-            let stride = AppConfig.agentRow + AppConfig.rowGap
+            let stride = row + gap
             let index = Int(contentY / stride)
             let within = contentY - CGFloat(index) * stride
-            guard index >= 0, index < model.rows.count, within <= AppConfig.agentRow else { return nil }
+            guard index >= 0, index < model.rows.count, within <= row else { return nil }
             return .agent(index)
         }
-        if fromTop >= plusTop && fromTop < plusTop + AppConfig.controlRow { return .plus }
-        let gearTop = plusTop + AppConfig.controlRow + AppConfig.rowGap
-        if fromTop >= gearTop && fromTop < gearTop + AppConfig.controlRow { return .gear }
+        if fromTop >= plusTop && fromTop < plusTop + control { return .plus }
+        let gearTop = plusTop + control + gap
+        if fromTop >= gearTop && fromTop < gearTop + control { return .gear }
         return nil
     }
 
     private func iconFrame(_ index: Int) -> CGRect {
-        let tops = ShellGeometry.stack(agentCount: model.rows.count)
-        let contentY = CGFloat(index) * (AppConfig.agentRow + AppConfig.rowGap) - model.scroll
-        let fromTop = tops.agents + contentY + (AppConfig.agentRow - AppConfig.agentIcon) / 2
+        let tops = ShellGeometry.stack(agentCount: model.rows.count, scale: scale)
+        let row = AppConfig.agentRow * scale
+        let icon = AppConfig.agentIcon * scale
+        let contentY = CGFloat(index) * (row + AppConfig.rowGap * scale) - model.scroll
+        let fromTop = tops.agents + contentY + (row - icon) / 2
         let capsule = hitFrame
-        let y = capsule.maxY - fromTop - AppConfig.agentIcon
-        let x = capsule.minX + (AppConfig.capsuleWidth - AppConfig.agentIcon) / 2
-        return CGRect(x: x, y: y, width: AppConfig.agentIcon, height: AppConfig.agentIcon)
+        let y = capsule.maxY - fromTop - icon
+        let x = capsule.midX - icon / 2
+        return CGRect(x: x, y: y, width: icon, height: icon)
     }
 
     private func plusFrame() -> CGRect {
-        let tops = ShellGeometry.stack(agentCount: model.rows.count)
-        let plusTop = tops.agents + (model.rows.isEmpty ? 0 : model.viewport + AppConfig.rowGap)
+        let tops = ShellGeometry.stack(agentCount: model.rows.count, scale: scale)
+        let control = AppConfig.controlRow * scale
+        let plusTop = tops.agents + (model.rows.isEmpty ? 0 : model.viewport + AppConfig.rowGap * scale)
         let capsule = hitFrame
-        let y = capsule.maxY - plusTop - AppConfig.controlRow
-        return CGRect(x: capsule.minX, y: y, width: capsule.width, height: AppConfig.controlRow)
+        let y = capsule.maxY - plusTop - control
+        return CGRect(x: capsule.minX, y: y, width: capsule.width, height: control)
     }
 
     private func cachedIcon(_ source: String) -> NSImage? {
@@ -792,21 +993,23 @@ final class KittenShell: NSObject {
         var kind = ""
     }
 
-    private func taskFields(for row: KittenRow) -> TaskFields {
+    private func taskFields(id: String, fallback: KittenRow) -> TaskFields {
         var fields = TaskFields()
-        guard let task = taskCache[row.id] else { return fields }
+        guard let task = taskCache[id] else { return fields }
         let prompt = string(task["prompt"]).trimmingCharacters(in: .whitespacesAndNewlines)
         let detail = string(task["detail"]).trimmingCharacters(in: .whitespacesAndNewlines)
         if !prompt.isEmpty {
             fields.summary = prompt
-        } else if !detail.isEmpty, detail != row.title {
+        } else if !detail.isEmpty, detail != fallback.title {
             fields.summary = detail
         }
         fields.requestID = string(task["request_id"])
         fields.questionID = string(task["question_id"])
         fields.kind = string(task["kind"])
         fields.options = choices(task["options"])
-        if fields.options.isEmpty, row.status == "wait", fields.kind == "permission" {
+        let status = string(task["status"])
+        let useStatus = status.isEmpty ? fallback.status : status
+        if fields.options.isEmpty, useStatus == "wait", fields.kind == "permission" {
             fields.options = [
                 BubbleChoice(id: "allow", label: "Allow"),
                 BubbleChoice(id: "deny", label: "Deny")
@@ -859,6 +1062,12 @@ final class KittenShell: NSObject {
 
     private func string(_ value: Any?) -> String {
         value as? String ?? ""
+    }
+
+    private func number(_ value: Any?) -> Double {
+        if let value = value as? Double { return value }
+        if let value = value as? NSNumber { return value.doubleValue }
+        return 0
     }
 
     private func bool(_ value: Any?) -> Bool {

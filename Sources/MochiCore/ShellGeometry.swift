@@ -22,15 +22,17 @@ public enum ShellGeometry {
         )
     }
 
-    /// 8pt in from the right edge, vertically centered, then clamped so the 56pt kitten stays visible.
-    public static func defaultAnchor(screen: CGRect, visible: CGRect) -> CGPoint {
-        let raw = CGPoint(x: screen.maxX - AppConfig.screenInset - AppConfig.kittenSize / 2, y: screen.midY)
-        return clampCenter(raw, size: AppConfig.kittenSize, visible: visible)
+    /// 8pt in from the right edge, vertically centered, then clamped so the kitten stays visible.
+    public static func defaultAnchor(screen: CGRect, visible: CGRect, scale: CGFloat = 1) -> CGPoint {
+        let kitten = AppConfig.kittenSize * ShellScale.factor(scale)
+        let raw = CGPoint(x: screen.maxX - AppConfig.screenInset - kitten / 2, y: screen.midY)
+        return clampCenter(raw, size: kitten, visible: visible)
     }
 
-    public static func leftAnchor(screen: CGRect, visible: CGRect) -> CGPoint {
-        let raw = CGPoint(x: screen.minX + AppConfig.screenInset + AppConfig.kittenSize / 2, y: screen.midY)
-        return clampCenter(raw, size: AppConfig.kittenSize, visible: visible)
+    public static func leftAnchor(screen: CGRect, visible: CGRect, scale: CGFloat = 1) -> CGPoint {
+        let kitten = AppConfig.kittenSize * ShellScale.factor(scale)
+        let raw = CGPoint(x: screen.minX + AppConfig.screenInset + kitten / 2, y: screen.midY)
+        return clampCenter(raw, size: kitten, visible: visible)
     }
 
     public static func clampCenter(_ center: CGPoint, size: CGFloat, visible: CGRect) -> CGPoint {
@@ -40,14 +42,15 @@ public enum ShellGeometry {
         return CGPoint(x: x, y: y)
     }
 
-    /// Height of the open capsule. The top 56pt is the kitten's circular base; the menu grows below it.
-    public static func contentHeight(agentCount: Int) -> CGFloat {
+    /// Height of the open capsule. The top is the kitten; the menu grows below it.
+    public static func contentHeight(agentCount: Int, scale: CGFloat = 1) -> CGFloat {
+        let s = ShellScale.factor(scale)
         let count = max(0, agentCount)
         let agents: CGFloat = count == 0
             ? 0
             : CGFloat(count) * AppConfig.agentRow + CGFloat(count - 1) * AppConfig.rowGap
         let beforePlus: CGFloat = count == 0 ? 0 : AppConfig.rowGap
-        return AppConfig.kittenSize
+        return (AppConfig.kittenSize
             + AppConfig.dividerGap
             + AppConfig.dividerHeight
             + AppConfig.dividerGap
@@ -56,20 +59,21 @@ public enum ShellGeometry {
             + AppConfig.controlRow
             + AppConfig.rowGap
             + AppConfig.controlRow
-            + AppConfig.capsulePadY
+            + AppConfig.capsulePadY) * s
     }
 
-    /// Distances from the top of the capsule. The kitten occupies the top 56pt and does not move when the menu opens.
-    public static func stack(agentCount: Int) -> (kitten: CGFloat, divider: CGFloat, agents: CGFloat, plus: CGFloat, gear: CGFloat) {
+    /// Distances from the top of the capsule. The kitten occupies the top and does not move when the menu opens.
+    public static func stack(agentCount: Int, scale: CGFloat = 1) -> (kitten: CGFloat, divider: CGFloat, agents: CGFloat, plus: CGFloat, gear: CGFloat) {
+        let s = ShellScale.factor(scale)
         let kitten: CGFloat = 0
-        let divider = AppConfig.kittenSize + AppConfig.dividerGap
-        let agents = divider + AppConfig.dividerHeight + AppConfig.dividerGap
+        let divider = (AppConfig.kittenSize + AppConfig.dividerGap) * s
+        let agents = divider + (AppConfig.dividerHeight + AppConfig.dividerGap) * s
         let count = max(0, agentCount)
         let block: CGFloat = count == 0
             ? 0
-            : CGFloat(count) * AppConfig.agentRow + CGFloat(max(0, count - 1)) * AppConfig.rowGap
-        let plus = agents + block + (count == 0 ? 0 : AppConfig.rowGap)
-        let gear = plus + AppConfig.controlRow + AppConfig.rowGap
+            : (CGFloat(count) * AppConfig.agentRow + CGFloat(max(0, count - 1)) * AppConfig.rowGap) * s
+        let plus = agents + block + (count == 0 ? 0 : AppConfig.rowGap * s)
+        let gear = plus + (AppConfig.controlRow + AppConfig.rowGap) * s
         return (kitten, divider, agents, plus, gear)
     }
 
@@ -78,28 +82,44 @@ public enum ShellGeometry {
         anchorCenter: CGPoint,
         expanded: Bool,
         agentCount: Int,
-        visible: CGRect
+        visible: CGRect,
+        scale: CGFloat = 1
     ) -> (frame: CGRect, scrolls: Bool) {
-        let center = clampCenter(anchorCenter, size: AppConfig.kittenSize, visible: visible)
-        let top = center.y + AppConfig.kittenSize / 2
+        let s = ShellScale.factor(scale)
+        let kitten = AppConfig.kittenSize * s
+        let center = clampCenter(anchorCenter, size: kitten, visible: visible)
+        let top = center.y + kitten / 2
         if !expanded {
             return (
                 CGRect(
-                    x: center.x - AppConfig.kittenSize / 2,
-                    y: center.y - AppConfig.kittenSize / 2,
-                    width: AppConfig.kittenSize,
-                    height: AppConfig.kittenSize
+                    x: center.x - kitten / 2,
+                    y: center.y - kitten / 2,
+                    width: kitten,
+                    height: kitten
                 ),
                 false
             )
         }
-        let natural = contentHeight(agentCount: agentCount)
-        let room = max(AppConfig.kittenSize, top - visible.minY)
+        let natural = contentHeight(agentCount: agentCount, scale: s)
+        let room = max(kitten, top - visible.minY)
         let height = min(natural, room)
         let scrolls = natural > height + 0.5
-        let x = center.x - AppConfig.capsuleWidth / 2
+        let width = AppConfig.headWidth * s
+        let x = center.x - width / 2
         let y = top - height
-        return (CGRect(x: x, y: y, width: AppConfig.capsuleWidth, height: height), scrolls)
+        return (CGRect(x: x, y: y, width: width, height: height), scrolls)
+    }
+}
+
+/// `pet_scale` from settings. 1 is the 56pt kitten. Zero means that default.
+public enum ShellScale {
+    public static func factor(_ value: CGFloat) -> CGFloat {
+        let number: CGFloat = value == 0 ? 1 : value
+        return min(2, max(0.5, number))
+    }
+
+    public static func factor(_ value: Double) -> CGFloat {
+        factor(CGFloat(value))
     }
 }
 
@@ -116,20 +136,26 @@ public struct BubblePlacement: Equatable {
 }
 
 public enum BubblePlacer {
-    /// Places the bubble beside `anchor`. The kitten's screen half picks the side.
+    /// Puts the bubble beside the capsule, not the icon.
+    /// The kitten's screen half picks the side. The beak aims at `anchor` and stops `beakGap` short of the capsule.
     /// Beak y stays inside `[radius+8, height-radius-8]` after the bubble is clamped.
-    public static func place(anchor: CGRect, size: CGSize, screen: CGRect) -> BubblePlacement {
+    public static func place(anchor: CGRect, capsule: CGRect, size: CGSize, screen: CGRect) -> BubblePlacement {
         let width = max(1, size.width)
         let height = max(1, size.height)
-        let onLeftHalf = anchor.midX < screen.midX
+        let onLeftHalf = capsule.midX < screen.midX
         let pointsRight = !onLeftHalf
         var x = pointsRight
-            ? anchor.minX - AppConfig.beakGap - width
-            : anchor.maxX + AppConfig.beakGap
+            ? capsule.minX - AppConfig.beakGap - width
+            : capsule.maxX + AppConfig.beakGap
         var y = anchor.midY - height / 2
-        x = min(max(x, screen.minX), max(screen.minX, screen.maxX - width))
         y = min(max(y, screen.minY), max(screen.minY, screen.maxY - height))
-        let frame = CGRect(x: x, y: y, width: width, height: height)
+        x = min(max(x, screen.minX), max(screen.minX, screen.maxX - width))
+        var frame = CGRect(x: x, y: y, width: width, height: height)
+        if frame.intersects(capsule) {
+            frame.origin.x = pointsRight
+                ? capsule.minX - AppConfig.beakGap - width
+                : capsule.maxX + AppConfig.beakGap
+        }
         let fromBottom = anchor.midY - frame.minY
         var beakFromTop = height - fromBottom
         let lower = AppConfig.bubbleRadius + 8
@@ -140,6 +166,207 @@ public enum BubblePlacer {
             beakFromTop = height / 2
         }
         return BubblePlacement(frame: frame, beakY: beakFromTop, pointsRight: pointsRight)
+    }
+}
+
+/// Spoon silhouette in y-up coordinates, origin at the bottom left of the bounding box.
+public enum SpoonOutline {
+    public static func path(width: CGFloat, height: CGFloat, scale: CGFloat = 1) -> CGPath {
+        let s = ShellScale.factor(scale)
+        let w = max(width, 1)
+        let h = max(height, 1)
+        let bodyW = min(AppConfig.capsuleWidth * s, w)
+        let inset = (w - bodyW) / 2
+        let topR = min(AppConfig.headRadius * s, w / 2, h / 2)
+        let botR = min(bodyW / 2, h / 2)
+        let kitten = AppConfig.kittenSize * s
+        if inset < 1 || h <= kitten + 0.5 {
+            let radius = min(w, h) / 2
+            return CGPath(
+                roundedRect: CGRect(x: 0, y: 0, width: w, height: h),
+                cornerWidth: radius,
+                cornerHeight: radius,
+                transform: nil
+            )
+        }
+
+        let left: CGFloat = 0
+        let right = w
+        let bodyLeft = inset
+        let bodyRight = w - inset
+        let curveStart = min(AppConfig.spoonNeck * s, max(topR, h - botR - 8 * s))
+        var fillet = AppConfig.spoonFillet * s
+        if curveStart + fillet > h - botR {
+            fillet = max(0, h - botR - curveStart)
+        }
+        let curveEnd = curveStart + fillet
+        let curveStartY = h - curveStart
+        let curveEndY = h - curveEnd
+
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: left + topR, y: h))
+        path.addLine(to: CGPoint(x: right - topR, y: h))
+        path.addArc(
+            center: CGPoint(x: right - topR, y: h - topR),
+            radius: topR,
+            startAngle: .pi / 2,
+            endAngle: 0,
+            clockwise: true
+        )
+        path.addLine(to: CGPoint(x: right, y: curveStartY))
+        if fillet > 0.5 {
+            let handle = fillet * 0.92
+            path.addCurve(
+                to: CGPoint(x: bodyRight, y: curveEndY),
+                control1: CGPoint(x: right, y: curveStartY - handle),
+                control2: CGPoint(x: bodyRight, y: curveEndY + handle)
+            )
+        } else {
+            path.addLine(to: CGPoint(x: bodyRight, y: curveEndY))
+        }
+        path.addLine(to: CGPoint(x: bodyRight, y: botR))
+        path.addArc(
+            center: CGPoint(x: bodyRight - botR, y: botR),
+            radius: botR,
+            startAngle: 0,
+            endAngle: -.pi / 2,
+            clockwise: true
+        )
+        path.addLine(to: CGPoint(x: bodyLeft + botR, y: 0))
+        path.addArc(
+            center: CGPoint(x: bodyLeft + botR, y: botR),
+            radius: botR,
+            startAngle: -.pi / 2,
+            endAngle: .pi,
+            clockwise: true
+        )
+        path.addLine(to: CGPoint(x: bodyLeft, y: curveEndY))
+        if fillet > 0.5 {
+            let handle = fillet * 0.92
+            path.addCurve(
+                to: CGPoint(x: left, y: curveStartY),
+                control1: CGPoint(x: bodyLeft, y: curveEndY + handle),
+                control2: CGPoint(x: left, y: curveStartY - handle)
+            )
+        } else {
+            path.addLine(to: CGPoint(x: left, y: curveStartY))
+        }
+        path.addLine(to: CGPoint(x: left, y: h - topR))
+        path.addArc(
+            center: CGPoint(x: left + topR, y: h - topR),
+            radius: topR,
+            startAngle: .pi,
+            endAngle: .pi / 2,
+            clockwise: true
+        )
+        path.closeSubpath()
+        return path
+    }
+
+    public static func contains(_ point: CGPoint, width: CGFloat, height: CGFloat, scale: CGFloat = 1) -> Bool {
+        path(width: width, height: height, scale: scale).contains(point)
+    }
+}
+
+public struct AgentIconCandidate: Equatable {
+    public var id: String
+    public var source: String
+    public var title: String
+    public var status: String
+    public var read: Bool
+    public var updated: Double
+
+    public init(id: String, source: String, title: String, status: String, read: Bool, updated: Double) {
+        self.id = id
+        self.source = source
+        self.title = title
+        self.status = status
+        self.read = read
+        self.updated = updated
+    }
+}
+
+public struct AgentIconRow: Equatable {
+    public var id: String
+    public var source: String
+    public var title: String
+    public var status: String
+    public var read: Bool
+    public var showsDot: Bool
+    public var memberIDs: [String]
+
+    public init(id: String, source: String, title: String, status: String, read: Bool, showsDot: Bool, memberIDs: [String]) {
+        self.id = id
+        self.source = source
+        self.title = title
+        self.status = status
+        self.read = read
+        self.showsDot = showsDot
+        self.memberIDs = memberIDs
+    }
+}
+
+public enum AgentIconList {
+    public static let order = ["cursor", "codex", "grok-bot", "gpt"]
+
+    /// One row per agent. Running and waiting stay. A finished row stays until it has been opened
+    /// and the bubble has closed. `holding` keeps the open finished row on screen through that close.
+    /// Prefer a waiting task, then a running one, then the newest unread finish.
+    public static func rows(_ items: [AgentIconCandidate], holding: Set<String> = []) -> [AgentIconRow] {
+        var grouped: [String: [AgentIconCandidate]] = [:]
+        for item in items {
+            let source = AgentLaunch.normalize(item.source)
+            if source == "mochi" { continue }
+            let visible: Bool
+            switch item.status {
+            case "running", "wait":
+                visible = true
+            case "done", "fail":
+                visible = !item.read || holding.contains(item.id)
+            default:
+                visible = false
+            }
+            guard visible else { continue }
+            var copy = item
+            copy.source = source
+            grouped[source, default: []].append(copy)
+        }
+        let keys = grouped.keys.sorted { lhs, rhs in
+            let left = order.firstIndex(of: lhs) ?? 99
+            let right = order.firstIndex(of: rhs) ?? 99
+            if left != right { return left < right }
+            return lhs < rhs
+        }
+        return keys.compactMap { source in
+            guard let group = grouped[source], !group.isEmpty else { return nil }
+            let ranked = group.sorted { a, b in
+                let ra = rank(a.status)
+                let rb = rank(b.status)
+                if ra != rb { return ra < rb }
+                if a.updated != b.updated { return a.updated > b.updated }
+                return a.id > b.id
+            }
+            guard let best = ranked.first else { return nil }
+            let dot = group.contains { !$0.read && ($0.status == "wait" || $0.status == "done" || $0.status == "fail") }
+            return AgentIconRow(
+                id: best.id,
+                source: source,
+                title: best.title,
+                status: best.status,
+                read: best.read,
+                showsDot: dot,
+                memberIDs: group.map(\.id)
+            )
+        }
+    }
+
+    private static func rank(_ status: String) -> Int {
+        switch status {
+        case "wait": return 0
+        case "running": return 1
+        case "done", "fail": return 2
+        default: return 3
+        }
     }
 }
 

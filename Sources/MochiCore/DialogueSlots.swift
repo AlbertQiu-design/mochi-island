@@ -7,14 +7,16 @@ public struct DialogueSlot: Codable, Equatable {
     public var skin: String
     public var created: Double
     public var read: Bool
+    public var status: String
 
-    public init(id: String, source: String, title: String, skin: String, created: Double, read: Bool = false) {
+    public init(id: String, source: String, title: String, skin: String, created: Double, read: Bool = false, status: String = "") {
         self.id = id
         self.source = source
         self.title = title
         self.skin = skin
         self.created = created
         self.read = read
+        self.status = status
     }
 
     public var dictionary: [String: Any] {
@@ -24,12 +26,13 @@ public struct DialogueSlot: Codable, Equatable {
             "title": title,
             "skin": skin,
             "created": created,
-            "read": read
+            "read": read,
+            "status": status
         ]
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, source, title, skin, created, read
+        case id, source, title, skin, created, read, status
     }
 
     public init(from decoder: Decoder) throws {
@@ -40,6 +43,7 @@ public struct DialogueSlot: Codable, Equatable {
         skin = try container.decodeIfPresent(String.self, forKey: .skin) ?? "cursor"
         created = try container.decodeIfPresent(Double.self, forKey: .created) ?? 0
         read = try container.decodeIfPresent(Bool.self, forKey: .read) ?? false
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -50,6 +54,7 @@ public struct DialogueSlot: Codable, Equatable {
         try container.encode(skin, forKey: .skin)
         try container.encode(created, forKey: .created)
         try container.encode(read, forKey: .read)
+        try container.encode(status, forKey: .status)
     }
 }
 
@@ -111,13 +116,15 @@ public struct DialogueSlotStore: Codable, Equatable {
         return next
     }
 
-    /// After the bubble closes, a read slot whose task is done or failed leaves the capsule.
+    /// A read finished slot stays while its task is still listed, so the next merge cannot
+    /// create it again as unread. Once that task ages out, the slot itself leaves.
     public func removingReadDone(tasks: [CursorTask]) -> DialogueSlotStore {
-        let status = Dictionary(tasks.map { ($0.id, $0.status) }, uniquingKeysWith: { _, latest in latest })
+        let live = Dictionary(tasks.map { ($0.id, $0.status) }, uniquingKeysWith: { _, latest in latest })
         var next = normalized()
         next.slots.removeAll { slot in
             guard slot.read else { return false }
-            let state = status[slot.id] ?? ""
+            if live[slot.id] != nil { return false }
+            let state = slot.status
             return state == "done" || state == "fail"
         }
         if !next.slots.contains(where: { $0.id == next.selected }) {
@@ -138,6 +145,7 @@ public struct DialogueSlotStore: Codable, Equatable {
             if let index = indexByID[task.id] {
                 next.slots[index].source = AgentLaunch.normalize(task.source)
                 next.slots[index].skin = Self.face(for: next.slots[index].source)
+                next.slots[index].status = task.status
                 if !title.isEmpty {
                     next.slots[index].title = title
                 }
@@ -150,7 +158,8 @@ public struct DialogueSlotStore: Codable, Equatable {
                 source: source,
                 title: title.isEmpty ? "New chat" : title,
                 skin: Self.face(for: source),
-                created: created
+                created: created,
+                status: task.status
             )
             indexByID[task.id] = next.slots.count
             next.slots.append(slot)
