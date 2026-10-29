@@ -361,12 +361,13 @@ func SpecConstantsAndShellGeometry() {
     check(AppConfig.bubblePadX == 12)
     check(AppConfig.bubblePadY == 8)
     check(AppConfig.bubbleMinHeight == 44)
+    check(AppConfig.doneKeep >= 24 * 60 * 60)
     check(AppConfig.kittenSize == 56)
     check(AppConfig.capsuleWidth == 56)
     check(AppConfig.capsuleRadius == 28)
-    check(AppConfig.kittenMark == 40)
-    check(AppConfig.agentRow == 44)
+    check(AppConfig.capsuleWidth == AppConfig.kittenSize)
     check(AppConfig.agentIcon == 28)
+    check(AppConfig.capsuleWidth - AppConfig.capsulePadX * 2 >= AppConfig.agentIcon)
     check(AppConfig.rowGap == 4)
     check(AppConfig.dragThreshold == 3)
     check(AppConfig.screenInset == 8)
@@ -377,10 +378,10 @@ func SpecConstantsAndShellGeometry() {
     check(AppConfig.glassTintRed == 28)
     check(AppConfig.glassTintGreen == 28)
     check(AppConfig.glassTintBlue == 30)
-    check(ShellGeometry.contentHeight(agentCount: 0) == 173)
-    check(ShellGeometry.contentHeight(agentCount: 1) == 221)
-    check(ShellGeometry.contentHeight(agentCount: 4) == 365)
-    check(ShellGeometry.contentHeight(agentCount: 8) == 557)
+    check(ShellGeometry.contentHeight(agentCount: 0) == 169)
+    check(ShellGeometry.contentHeight(agentCount: 1) == 217)
+    check(ShellGeometry.contentHeight(agentCount: 4) == 361)
+    check(ShellGeometry.contentHeight(agentCount: 8) == 553)
     let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
     let anchor = ShellGeometry.defaultAnchor(screen: screen, visible: screen)
     check(abs(anchor.x - (1440 - 8 - 28)) < 0.1)
@@ -425,8 +426,26 @@ func SpecConstantsAndShellGeometry() {
     let fine = IslandPrefs.parse(["pet_scale": 1.37])
     check(abs(fine.petScale - 1.37) < 0.0001)
     check(abs(grew.frame.maxY - grewClosed.frame.maxY) < 0.1)
+    check(abs(grew.frame.midX - grewClosed.frame.midX) < 0.1)
+    check(grew.frame.width == AppConfig.capsuleWidth)
+    check(grewClosed.frame.width == AppConfig.kittenSize)
+    check(grew.frame.width == grewClosed.frame.width)
     check(grew.frame.height == ShellGeometry.contentHeight(agentCount: 4))
     check(grew.scrolls == false)
+    let edge = ShellGeometry.placeCapsule(
+        anchorCenter: CGPoint(x: 1440 - 8 - 28, y: 450),
+        expanded: true,
+        agentCount: 1,
+        visible: screen
+    )
+    let edgeClosed = ShellGeometry.placeCapsule(
+        anchorCenter: CGPoint(x: 1440 - 8 - 28, y: 450),
+        expanded: false,
+        agentCount: 1,
+        visible: screen
+    )
+    check(abs(edge.frame.midX - edgeClosed.frame.midX) < 0.1)
+    check(abs(edge.frame.maxY - edgeClosed.frame.maxY) < 0.1)
     let crowded = ShellGeometry.placeCapsule(
         anchorCenter: CGPoint(x: 400, y: 250),
         expanded: true,
@@ -435,23 +454,87 @@ func SpecConstantsAndShellGeometry() {
     )
     check(crowded.scrolls)
     check(crowded.frame.height <= visible.height)
-    let rightAnchor = CGRect(x: 900, y: 360, width: 28, height: 28)
-    let rightBubble = BubblePlacer.place(anchor: rightAnchor, size: CGSize(width: 220, height: 120), screen: screen)
+    let rightCapsule = CGRect(x: 1000, y: 200, width: AppConfig.capsuleWidth, height: 361)
+    let rightAnchor = CGRect(x: rightCapsule.midX - 14, y: 280, width: 28, height: 28)
+    let rightBubble = BubblePlacer.place(anchor: rightAnchor, capsule: rightCapsule, size: CGSize(width: 220, height: 120), screen: screen)
     check(rightBubble.pointsRight)
-    check(abs(rightBubble.frame.maxX - (rightAnchor.minX - AppConfig.beakGap)) < 0.1)
-    let leftAnchor = CGRect(x: 20, y: 360, width: 28, height: 28)
-    let leftBubble = BubblePlacer.place(anchor: leftAnchor, size: CGSize(width: 220, height: 120), screen: screen)
+    check(abs(rightBubble.frame.maxX - (rightCapsule.minX - AppConfig.beakGap)) < 0.1)
+    check(rightBubble.frame.intersects(rightCapsule) == false)
+    check(rightBubble.frame.maxX <= rightAnchor.minX - AppConfig.beakGap)
+    check(abs((rightBubble.frame.maxY - rightBubble.beakY) - rightAnchor.midY) < 1)
+    let leftCapsule = CGRect(x: 16, y: 200, width: AppConfig.capsuleWidth, height: 361)
+    let leftAnchor = CGRect(x: leftCapsule.midX - 14, y: 280, width: 28, height: 28)
+    let leftBubble = BubblePlacer.place(anchor: leftAnchor, capsule: leftCapsule, size: CGSize(width: 220, height: 120), screen: screen)
     check(leftBubble.pointsRight == false)
-    check(abs(leftBubble.frame.minX - (leftAnchor.maxX + AppConfig.beakGap)) < 0.1)
-    let topAnchor = CGRect(x: 700, y: 860, width: 28, height: 28)
-    let topBubble = BubblePlacer.place(anchor: topAnchor, size: CGSize(width: 220, height: 180), screen: screen)
+    check(abs(leftBubble.frame.minX - (leftCapsule.maxX + AppConfig.beakGap)) < 0.1)
+    check(leftBubble.frame.intersects(leftCapsule) == false)
+    check(leftBubble.frame.minX >= leftAnchor.maxX + AppConfig.beakGap)
+    let tight = CGRect(x: 0, y: 0, width: 360, height: 400)
+    let tightCapsule = CGRect(x: 200, y: 80, width: AppConfig.capsuleWidth, height: 220)
+    let tightAnchor = CGRect(x: tightCapsule.midX - 14, y: 140, width: 28, height: 28)
+    let tightBubble = BubblePlacer.place(anchor: tightAnchor, capsule: tightCapsule, size: CGSize(width: 220, height: 80), screen: tight)
+    check(tightBubble.pointsRight)
+    check(tightBubble.frame.intersects(tightCapsule) == false)
+    check(tightBubble.frame.maxX <= tightCapsule.minX - AppConfig.beakGap + 0.1)
+    let topCapsule = CGRect(x: 1000, y: 700, width: AppConfig.capsuleWidth, height: 180)
+    let topAnchor = CGRect(x: topCapsule.midX - 14, y: 860, width: 28, height: 28)
+    let topBubble = BubblePlacer.place(anchor: topAnchor, capsule: topCapsule, size: CGSize(width: 220, height: 180), screen: screen)
     check(topBubble.frame.maxY <= screen.maxY + 0.1)
+    check(topBubble.frame.intersects(topCapsule) == false)
     check(topBubble.beakY >= AppConfig.bubbleRadius + 8 - 0.1)
     check(topBubble.beakY <= 180 - AppConfig.bubbleRadius - 8 + 0.1)
-    let bottomAnchor = CGRect(x: 700, y: 4, width: 28, height: 28)
-    let bottomBubble = BubblePlacer.place(anchor: bottomAnchor, size: CGSize(width: 220, height: 180), screen: screen)
+    let bottomCapsule = CGRect(x: 1000, y: 4, width: AppConfig.capsuleWidth, height: 180)
+    let bottomAnchor = CGRect(x: bottomCapsule.midX - 14, y: 4, width: 28, height: 28)
+    let bottomBubble = BubblePlacer.place(anchor: bottomAnchor, capsule: bottomCapsule, size: CGSize(width: 220, height: 180), screen: screen)
     check(bottomBubble.frame.minY >= screen.minY - 0.1)
+    check(bottomBubble.frame.intersects(bottomCapsule) == false)
     check(bottomBubble.beakY >= AppConfig.bubbleRadius + 8 - 0.1)
+    check(AppConfig.agentRow == 44)
+    check(AppConfig.kittenMark == 40)
+    let openH = ShellGeometry.contentHeight(agentCount: 1)
+    let iconTop = AppConfig.capsulePadY + (AppConfig.agentRow - AppConfig.agentIcon) / 2
+    let iconLeft = (AppConfig.capsuleWidth - AppConfig.agentIcon) / 2
+    let iconBottom = openH - (iconTop + AppConfig.agentIcon)
+    check(iconLeft >= AppConfig.capsulePadX)
+    check(CapsuleOutline.contains(CGPoint(x: iconLeft + 1, y: openH - iconTop - 1), width: AppConfig.capsuleWidth, height: openH))
+    check(CapsuleOutline.contains(CGPoint(x: iconLeft + AppConfig.agentIcon - 1, y: iconBottom + 1), width: AppConfig.capsuleWidth, height: openH))
+    check(CapsuleOutline.contains(CGPoint(x: AppConfig.capsuleWidth / 2, y: openH / 2), width: AppConfig.capsuleWidth, height: openH))
+    check(CapsuleOutline.contains(CGPoint(x: 1, y: 1), width: AppConfig.capsuleWidth, height: openH) == false)
+    check(CapsuleOutline.contains(CGPoint(x: 1, y: openH - 1), width: AppConfig.capsuleWidth, height: openH) == false)
+    let tallScreen = CGRect(x: 0, y: 0, width: 800, height: 2000)
+    let doubled = ShellGeometry.placeCapsule(
+        anchorCenter: CGPoint(x: 400, y: 1400),
+        expanded: true,
+        agentCount: 4,
+        visible: tallScreen,
+        scale: 2
+    )
+    let doubledClosed = ShellGeometry.placeCapsule(
+        anchorCenter: CGPoint(x: 400, y: 1400),
+        expanded: false,
+        agentCount: 4,
+        visible: tallScreen,
+        scale: 2
+    )
+    check(doubledClosed.frame.width == AppConfig.kittenSize * 2)
+    check(doubledClosed.frame.height == AppConfig.kittenSize * 2)
+    check(doubled.frame.width == AppConfig.capsuleWidth * 2)
+    check(doubled.frame.width == doubledClosed.frame.width)
+    check(abs(doubled.frame.height - ShellGeometry.contentHeight(agentCount: 4) * 2) < 0.1)
+    check(abs(doubled.frame.maxY - doubledClosed.frame.maxY) < 0.1)
+    check(abs(doubled.frame.midX - doubledClosed.frame.midX) < 0.1)
+    check(ShellGeometry.contentHeight(agentCount: 0, scale: 2) == 338)
+    let wide = AppConfig.capsuleWidth * 2
+    let tall = ShellGeometry.contentHeight(agentCount: 1, scale: 2)
+    let icon = AppConfig.agentIcon * 2
+    let insetX = (wide - icon) / 2
+    let insetTop = (AppConfig.capsulePadY + (AppConfig.agentRow - AppConfig.agentIcon) / 2) * 2
+    check(CapsuleOutline.contains(CGPoint(x: insetX + 1, y: tall - insetTop - 1), width: wide, height: tall))
+    check(CapsuleOutline.contains(CGPoint(x: 2, y: 2), width: wide, height: tall) == false)
+    check(abs(ShellScale.factor(1.37) - 1.37) < 0.0001)
+    check(IslandPrefs.parse(["pet_scale": 1.5]).petScale == 1.5)
+    check(IslandPrefs.parse(["pet_scale": 4]).petScale == 2)
+    check(IslandPrefs.parse(["pet_scale": 0]).petScale == 1)
     var gate = AlertSoundGate()
     check(gate.shouldPlay(now: 10))
     check(gate.shouldPlay(now: 10.4) == false)
@@ -459,6 +542,55 @@ func SpecConstantsAndShellGeometry() {
     for name in IslandPrefs.soundIDs {
         check(ToneSynth.peak(name) > 0.05)
     }
+}
+
+func AgentIconsStayOnePerSource() {
+    let rows = AgentIconList.rows([
+        AgentIconCandidate(id: "c-run", source: "cursor", title: "Run", status: "running", read: false, updated: 1),
+        AgentIconCandidate(id: "c-done", source: "cursor", title: "Done", status: "done", read: false, updated: 5),
+        AgentIconCandidate(id: "c-old", source: "cursor", title: "Old", status: "done", read: true, updated: 9),
+        AgentIconCandidate(id: "w-old", source: "cursor", title: "Old wait", status: "wait", read: true, updated: 1),
+        AgentIconCandidate(id: "w-new", source: "cursor", title: "New wait", status: "wait", read: false, updated: 4),
+        AgentIconCandidate(id: "g-wait", source: "chatgpt", title: "Wait", status: "wait", read: false, updated: 2),
+        AgentIconCandidate(id: "g-run", source: "gpt", title: "Run", status: "running", read: false, updated: 8),
+        AgentIconCandidate(id: "x-done", source: "codex", title: "Done", status: "done", read: true, updated: 3),
+        AgentIconCandidate(id: "fail", source: "grok", title: "Fail", status: "fail", read: false, updated: 4),
+        AgentIconCandidate(id: "cat", source: "mochi", title: "Cat", status: "running", read: false, updated: 9)
+    ])
+    check(rows.map(\.source) == ["cursor", "grok-bot", "gpt"])
+    check(rows[0].id == "w-new")
+    check(rows[0].showsDot)
+    check(rows[0].memberIDs.contains("c-run"))
+    check(rows[0].memberIDs.contains("c-done"))
+    check(rows[0].memberIDs.contains("c-old") == false)
+    check(rows[1].id == "fail")
+    check(rows[1].showsDot)
+    check(rows[2].id == "g-wait")
+    let running = AgentIconList.rows([
+        AgentIconCandidate(id: "r", source: "cursor", title: "R", status: "running", read: true, updated: 1)
+    ])
+    check(running.count == 1)
+    check(running[0].showsDot == false)
+    let waiting = AgentIconList.rows([
+        AgentIconCandidate(id: "w", source: "codex", title: "W", status: "wait", read: true, updated: 2)
+    ])
+    check(waiting.count == 1)
+    check(waiting[0].showsDot == false)
+    let done = AgentIconList.rows([
+        AgentIconCandidate(id: "d", source: "gpt", title: "D", status: "done", read: false, updated: 3)
+    ])
+    check(done.count == 1)
+    check(done[0].showsDot)
+    let opened = AgentIconList.rows([
+        AgentIconCandidate(id: "d2", source: "gpt", title: "D", status: "fail", read: true, updated: 3)
+    ])
+    check(opened.isEmpty)
+    let held = AgentIconList.rows([
+        AgentIconCandidate(id: "d2", source: "gpt", title: "D", status: "fail", read: true, updated: 3)
+    ], holding: ["d2"])
+    check(held.count == 1)
+    check(held[0].id == "d2")
+    check(held[0].showsDot == false)
 }
 
 func DockPrefDefaultsToRight() {
@@ -614,23 +746,32 @@ func RemoveWhenReadAndDone() {
     let store = DialogueSlotStore(
         selected: "a",
         slots: [
-            DialogueSlot(id: "a", source: "cursor", title: "Done", skin: "cursor", created: 1, read: true),
-            DialogueSlot(id: "b", source: "cursor", title: "Wait", skin: "cursor", created: 1, read: true),
-            DialogueSlot(id: "c", source: "cursor", title: "Unread", skin: "cursor", created: 1, read: false),
-            DialogueSlot(id: "d", source: "gpt", title: "Run", skin: "gpt", created: 1, read: true),
-            DialogueSlot(id: "e", source: "codex", title: "Fail", skin: "codex", created: 1, read: true)
+            DialogueSlot(id: "a", source: "cursor", title: "Done", skin: "cursor", created: 1, read: true, status: "done"),
+            DialogueSlot(id: "b", source: "cursor", title: "Wait", skin: "cursor", created: 1, read: true, status: "wait"),
+            DialogueSlot(id: "c", source: "cursor", title: "Unread", skin: "cursor", created: 1, read: false, status: "done"),
+            DialogueSlot(id: "d", source: "gpt", title: "Run", skin: "gpt", created: 1, read: true, status: "running"),
+            DialogueSlot(id: "e", source: "codex", title: "Fail", skin: "codex", created: 1, read: true, status: "fail")
         ]
     )
-    let next = store.removingReadDone(tasks: [
+    let liveTasks = [
         CursorTask(id: "a", title: "Done", status: "done"),
         CursorTask(id: "b", title: "Wait", status: "wait"),
         CursorTask(id: "c", title: "Unread", status: "done"),
         CursorTask(id: "d", title: "Run", status: "running", source: "gpt"),
         CursorTask(id: "e", title: "Fail", status: "fail", source: "codex")
+    ]
+    let live = store.removingReadDone(tasks: liveTasks)
+    check(Set(live.slots.map(\.id)) == Set(["a", "b", "c", "d", "e"]))
+    let kept = live.merged(with: [CursorTask(id: "a", title: "Done", status: "done", updated: 5)])
+    check(kept.slots.first { $0.id == "a" }?.read == true)
+    check(kept.slots.first { $0.id == "a" }?.status == "done")
+    let aged = store.removingReadDone(tasks: [
+        CursorTask(id: "b", title: "Wait", status: "wait"),
+        CursorTask(id: "c", title: "Unread", status: "done"),
+        CursorTask(id: "d", title: "Run", status: "running", source: "gpt")
     ])
-    let ids = Set(next.slots.map(\.id))
-    check(ids == Set(["b", "c", "d"]))
-    check(next.markingRead("c").slots.first { $0.id == "c" }?.read == true)
+    check(Set(aged.slots.map(\.id)) == Set(["b", "c", "d"]))
+    check(aged.markingRead("c").slots.first { $0.id == "c" }?.read == true)
 }
 
 func SelectingKeepsOnlyKnownIds() {
@@ -710,6 +851,7 @@ try TaskReaderKeepsSource()
 AgentLaunchFindsInstalledAppsAndCodexFallback()
 try KittenPositionParsesAndClamps()
 SpecConstantsAndShellGeometry()
+AgentIconsStayOnePerSource()
 DockPrefDefaultsToRight()
 try PickerFlagsPersistAcrossPrefs()
 try EmptyFileHasNoSeeds()

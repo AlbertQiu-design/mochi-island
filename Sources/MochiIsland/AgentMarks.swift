@@ -183,9 +183,15 @@ struct AgentMark: View {
 enum AgentIcon {
     static func image(source: String) -> NSImage? {
         let plan = AgentLaunch.plan(source: source)
-        guard let path = plan.appPath else { return nil }
-        let icon = NSWorkspace.shared.icon(forFile: path)
-        icon.size = NSSize(width: 32, height: 32)
-        return icon
+        if let path = plan.appPath {
+            let icon = NSWorkspace.shared.icon(forFile: path)
+            icon.size = NSSize(width: 32, height: 32)
+            return icon
+        }
+        let name = SlotFace.agentMark(for: source)
+        let url = Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "Web/pets")
+        guard let url, let image = NSImage(contentsOf: url) else { return nil }
+        image.size = NSSize(width: 28, height: 28)
+        return image
     }
 }

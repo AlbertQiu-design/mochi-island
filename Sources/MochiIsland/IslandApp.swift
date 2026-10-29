@@ -472,7 +472,8 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     private func syncMousePassthrough() {
         let screenMouse = NSEvent.mouseLocation
         settings.panel.ignoresMouseEvents = !settings.isVisible
-        if capsule.hitFrame.insetBy(dx: -4, dy: -4).contains(screenMouse) {
+        capsule.panel.ignoresMouseEvents = capsule.ignoresPointer(at: screenMouse)
+        if capsule.containsScreenPoint(screenMouse) {
             panel.ignoresMouseEvents = false
             return
         }

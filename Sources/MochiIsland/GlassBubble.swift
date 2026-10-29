@@ -138,7 +138,12 @@ struct BubbleFace: View {
             }
         }
         .background {
-            Color.clear.glassEffect(.regular, in: shape)
+            GlassEffectContainer {
+                shape
+                    .fill(.clear)
+                    .glassEffect(.regular, in: shape)
+            }
+            .allowsHitTesting(false)
         }
     }
 
@@ -150,7 +155,7 @@ struct BubbleFace: View {
         case .label:
             Text(model.title)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255))
+                .foregroundStyle(.primary)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .padding(.horizontal, AppConfig.bubblePadX)
@@ -167,11 +172,11 @@ struct BubbleFace: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(model.appName)
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color(red: 142 / 255, green: 142 / 255, blue: 147 / 255))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Text(model.title.isEmpty ? model.appName : model.title)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255))
+                        .foregroundStyle(.primary)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -181,14 +186,14 @@ struct BubbleFace: View {
             if !model.status.isEmpty {
                 Text(model.status)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
             }
             if !model.summary.isEmpty {
                 ScrollView {
-                    Text(model.summary)
+                        Text(model.summary)
                         .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(Color(red: 142 / 255, green: 142 / 255, blue: 147 / 255))
+                        .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .lineLimit(4)
                 }
@@ -203,7 +208,7 @@ struct BubbleFace: View {
                         } label: {
                             Text(option.label)
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255))
+                                .foregroundStyle(.primary)
                                 .multilineTextAlignment(.leading)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -211,7 +216,7 @@ struct BubbleFace: View {
                                 .padding(.vertical, 8)
                                 .background {
                                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .fill(Color.white.opacity(0.55))
+                                        .fill(Color.primary.opacity(0.1))
                                 }
                         }
                         .buttonStyle(.plain)
@@ -323,6 +328,7 @@ final class BubblePanel: NSObject {
         let hosting = NSHostingView(rootView: BubbleFace(model: model))
         hosting.sizingOptions = []
         hosting.wantsLayer = true
+        hosting.layer?.isOpaque = false
         hosting.layer?.backgroundColor = NSColor.clear.cgColor
         panel.contentView = hosting
         self.panel = panel
@@ -347,10 +353,10 @@ final class BubblePanel: NSObject {
         panel.orderOut(nil)
     }
 
-    func show(anchor: CGRect, screen: CGRect) {
+    func show(anchor: CGRect, capsule: CGRect, screen: CGRect) {
         let body = measuredBody()
         let size = CGSize(width: body.width + AppConfig.beakWidth, height: body.height)
-        let placed = BubblePlacer.place(anchor: anchor, size: size, screen: screen)
+        let placed = BubblePlacer.place(anchor: anchor, capsule: capsule, size: size, screen: screen)
         model.beakY = placed.beakY
         model.pointsRight = placed.pointsRight
         model.bodyWidth = body.width

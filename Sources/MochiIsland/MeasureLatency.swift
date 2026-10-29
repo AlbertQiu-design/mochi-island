@@ -481,13 +481,29 @@ final class LatencyHarness: NSObject, NSApplicationDelegate, WKScriptMessageHand
                     && (probe["summaryCapped"] as? Bool) == true
                     && (probe["choiceVisible"] as? Bool) == true
                 let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+                let rightAnchor = CGRect(x: 980, y: 400, width: 28, height: 28)
+                let rightCapsule = CGRect(
+                    x: rightAnchor.midX - AppConfig.capsuleWidth / 2,
+                    y: 300,
+                    width: AppConfig.capsuleWidth,
+                    height: 240
+                )
                 let right = BubblePlacer.place(
-                    anchor: CGRect(x: 980, y: 400, width: 28, height: 28),
+                    anchor: rightAnchor,
+                    capsule: rightCapsule,
                     size: CGSize(width: 220, height: 140),
                     screen: screen
                 )
+                let leftAnchor = CGRect(x: 24, y: 400, width: 28, height: 28)
+                let leftCapsule = CGRect(
+                    x: leftAnchor.midX - AppConfig.capsuleWidth / 2,
+                    y: 300,
+                    width: AppConfig.capsuleWidth,
+                    height: 240
+                )
                 let left = BubblePlacer.place(
-                    anchor: CGRect(x: 24, y: 400, width: 28, height: 28),
+                    anchor: leftAnchor,
+                    capsule: leftCapsule,
                     size: CGSize(width: 220, height: 140),
                     screen: screen
                 )
