@@ -123,6 +123,7 @@ final class BubbleModel: ObservableObject {
 
 struct BubbleFace: View {
     @ObservedObject var model: BubbleModel
+    @ObservedObject private var pickerMenu = PickerMenu.shared
 
     var body: some View {
         let shape = BubbleShape(radius: AppConfig.bubbleRadius, beakY: model.beakY, pointsRight: model.pointsRight)
@@ -225,7 +226,7 @@ struct BubbleFace: View {
 
     private var picker: some View {
         HStack(spacing: 8) {
-            ForEach(Self.apps, id: \.self) { source in
+            ForEach(pickerMenu.sources, id: \.self) { source in
                 Button {
                     model.onPick?(source)
                 }                 label: {
@@ -253,8 +254,6 @@ struct BubbleFace: View {
             }
         }
     }
-
-    private static let apps = ["cursor", "codex", "grok-bot", "gpt"]
 }
 
 enum BubbleMeasure {

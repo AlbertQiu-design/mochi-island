@@ -305,7 +305,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
         settings.toggle(capsule: capsule.hitFrame, dock: session.currentPrefs.dock, host: panel)
     }
 
-    func revealSettings(tab: SettingsTab = .dock) {
+    func revealSettings(tab: SettingsTab = .general) {
         settings.load(prefs: session.currentPrefs, link: session.linkPayload(action: "status", acknowledged: false))
         settings.select(tab)
         if !settings.isVisible {
@@ -629,7 +629,6 @@ final class Runtime: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
             return
         }
-        try? SMAppService.mainApp.register()
         if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
            let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
@@ -640,14 +639,13 @@ final class Runtime: NSObject, NSApplicationDelegate {
                 .first(where: { $0.hasPrefix("--settings-tab=") })?
                 .split(separator: "=", maxSplits: 1)
                 .last
-                .map(String.init) ?? "dock"
+                .map(String.init) ?? "general"
             let tab: SettingsTab
             switch raw {
-            case "looks": tab = .looks
-            case "colors": tab = .colors
+            case "kitten", "looks": tab = .kitten
             case "sound": tab = .sound
-            case "links": tab = .links
-            default: tab = .dock
+            case "agents", "links": tab = .agents
+            default: tab = .general
             }
             island.revealSettings(tab: tab)
         }
