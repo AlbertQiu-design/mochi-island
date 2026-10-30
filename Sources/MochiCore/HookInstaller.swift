@@ -138,4 +138,159 @@ public enum HookInstaller {
         try? FileManager.default.removeItem(at: backup)
         try? FileManager.default.copyItem(at: url, to: backup)
     }
+
+    /// Claude Code and Codex share this command-hook list. A normal event returns immediately.
+    /// Codex `PermissionRequest` is the one that waits for allow or deny.
+    public static let commandEvents = [
+        "SessionStart",
+        "UserPromptSubmit",
+        "PreToolUse",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "PermissionRequest",
+        "Notification",
+        "Stop",
+        "StopFailure",
+        "SubagentStart",
+        "SubagentStop",
+        "SessionEnd"
+    ]
+
+    public static func installCodex(configURL: URL, hooksURL: URL, binaryURL: URL, privacyAccepted: Bool) -> HookInstallResult {
+        guard privacyAccepted else {
+            return HookInstallResult(connected: false, hook: binaryURL.path, needsPrivacy: true)
+        }
+        guard FileManager.default.isExecutableFile(atPath: binaryURL.path) else {
+            return HookInstallResult(connected: false, hook: binaryURL.path, error: "hook program missing")
+        }
+        let original = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
+        guard let updated = CodexFeatureFlag.enablingHooks(in: original) else {
+            return HookInstallResult(connected: false, hook: binaryURL.path, error: "could not enable Codex hooks")
+        }
+        backup(configURL)
+        do {
+            try FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try updated.write(to: configURL, atomically: true, encoding: .utf8)
+        } catch {
+            return HookInstallResult(connected: false, hook: binaryURL.path, error: "could not write Codex config")
+        }
+        let installed = installNested(
+            fileURL: hooksURL,
+            command: shellCommand(binaryURL, source: "codex"),
+            binaryURL: binaryURL,
+            permissionTimeout: 300
+        )
+        guard installed.connected, CodexFeatureFlag.isEnabled(in: (try? String(contentsOf: configURL, encoding: .utf8)) ?? "") else {
+            return HookInstallResult(connected: false, hook: binaryURL.path, error: installed.error ?? "Codex hook was not installed")
+        }
+        return HookInstallResult(connected: true, hook: binaryURL.path)
+    }
+
+    public static func installClaude(settingsURL: URL, binaryURL: URL, privacyAccepted: Bool) -> HookInstallResult {
+        guard privacyAccepted else {
+            return HookInstallResult(connected: false, hook: binaryURL.path, needsPrivacy: true)
+        }
+        guard FileManager.default.isExecutableFile(atPath: binaryURL.path) else {
+            return HookInstallResult(connected: false, hook: binaryURL.path, error: "hook program missing")
+        }
+        return installNested(
+            fileURL: settingsURL,
+            command: shellCommand(binaryURL, source: "claude"),
+            binaryURL: binaryURL,
+            permissionTimeout: 10
+        )
+    }
+
+    public static func codexStatus(configURL: URL, hooksURL: URL, binaryURL: URL) -> HookInstallResult {
+        let config = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
+        let connected = CodexFeatureFlag.isEnabled(in: config) && nestedInstalled(fileURL: hooksURL, binaryURL: binaryURL)
+        return HookInstallResult(connected: connected, hook: binaryURL.path)
+    }
+
+    public static func claudeStatus(settingsURL: URL, binaryURL: URL) -> HookInstallResult {
+        HookInstallResult(connected: nestedInstalled(fileURL: settingsURL, binaryURL: binaryURL), hook: binaryURL.path)
+    }
+
+    public static func removeNested(fileURL: URL, binaryURL: URL) -> HookInstallResult {
+        backup(fileURL)
+        var root = read(fileURL)
+        var hooks = root["hooks"] as? [String: Any] ?? [:]
+        var cleaned: [String: Any] = [:]
+        for (event, raw) in hooks {
+            let groups = (raw as? [[String: Any]] ?? []).compactMap { group -> [String: Any]? in
+                var copy = group
+                if let inner = copy["hooks"] as? [[String: Any]] {
+                    let kept = inner.filter { !isOurs($0) }
+                    if kept.isEmpty { return nil }
+                    copy["hooks"] = kept
+                    return copy
+                }
+                return isOurs(copy) ? nil : copy
+            }
+            if !groups.isEmpty { cleaned[event] = groups }
+        }
+        hooks = cleaned
+        root["hooks"] = hooks
+        try? AtomicFile.writeJSON(root, to: fileURL)
+        return HookInstallResult(connected: nestedInstalled(fileURL: fileURL, binaryURL: binaryURL), hook: binaryURL.path)
+    }
+
+    private static func installNested(fileURL: URL, command: String, binaryURL: URL, permissionTimeout: Int) -> HookInstallResult {
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            let data = (try? Data(contentsOf: fileURL)) ?? Data()
+            if !data.isEmpty, (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) == nil {
+                return HookInstallResult(connected: false, hook: binaryURL.path, error: "could not read hooks")
+            }
+        }
+        backup(fileURL)
+        var root = read(fileURL)
+        var hooks = root["hooks"] as? [String: Any] ?? [:]
+        for name in commandEvents {
+            var groups = (hooks[name] as? [[String: Any]] ?? []).compactMap { group -> [String: Any]? in
+                var copy = group
+                if let inner = copy["hooks"] as? [[String: Any]] {
+                    let kept = inner.filter { !isOurs($0) }
+                    if kept.isEmpty { return nil }
+                    copy["hooks"] = kept
+                    return copy
+                }
+                return isOurs(copy) ? nil : copy
+            }
+            let entry: [String: Any] = [
+                "type": "command",
+                "command": command,
+                "timeout": name == "PermissionRequest" ? permissionTimeout : 10,
+                AppConfig.hookMarker: AppConfig.hookVersion
+            ]
+            groups.insert(["hooks": [entry]], at: 0)
+            hooks[name] = groups
+        }
+        root["hooks"] = hooks
+        do {
+            try AtomicFile.writeJSON(root, to: fileURL)
+        } catch {
+            return HookInstallResult(connected: false, hook: binaryURL.path, error: "could not write hooks")
+        }
+        let connected = nestedInstalled(fileURL: fileURL, binaryURL: binaryURL)
+        return HookInstallResult(connected: connected, hook: binaryURL.path, error: connected ? nil : "hook program missing")
+    }
+
+    private static func nestedInstalled(fileURL: URL, binaryURL: URL) -> Bool {
+        guard FileManager.default.isExecutableFile(atPath: binaryURL.path) else { return false }
+        let groups = (read(fileURL)["hooks"] as? [String: Any])?["UserPromptSubmit"] as? [[String: Any]] ?? []
+        for group in groups {
+            for entry in group["hooks"] as? [[String: Any]] ?? [] where isOurs(entry) {
+                let command = entry["command"] as? String ?? ""
+                if command.contains(binaryURL.path) || command.contains("MochiHookCLI") {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private static func shellCommand(_ binary: URL, source: String) -> String {
+        let path = binary.path.contains(" ") ? "\"\(binary.path)\"" : binary.path
+        return "\(path) --source \(source)"
+    }
 }

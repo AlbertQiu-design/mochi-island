@@ -101,30 +101,72 @@ final class AppSession {
         ]
     }
 
-    func linkPayload(action: String, acknowledged: Bool) -> [String: Any] {
+    func linkPayload(agent: String, action: String, acknowledged: Bool) -> [String: Any] {
         let binary = hookBinary()
-        let result: HookInstallResult
-        if action == "disconnect" {
-            result = HookInstaller.remove(hooksURL: hooksURL, binaryURL: binary, tasksURL: tasksURL)
-        } else if action == "connect" {
-            if !prefs.cursorPrivacyAccepted && !acknowledged {
-                var payload = HookInstallResult(connected: false, hook: binary.path, needsPrivacy: true).dictionary
+        let name = agent.isEmpty ? "cursor" : agent
+        if action == "connect" || action == "disconnect" {
+            if action == "connect" && !prefs.cursorPrivacyAccepted && !acknowledged {
+                var payload = agentStatus(binary: binary)
+                payload["needsPrivacy"] = true
+                payload["connected"] = false
                 payload["scanTranscripts"] = prefs.scanTranscripts
                 return payload
             }
-            prefs.cursorPrivacyAccepted = true
-            prefsStore.save(prefs)
-            result = HookInstaller.install(
+            if action == "connect" {
+                prefs.cursorPrivacyAccepted = true
+                prefsStore.save(prefs)
+            }
+            _ = install(agent: name, action: action, binary: binary)
+        }
+        var payload = agentStatus(binary: binary)
+        payload["scanTranscripts"] = prefs.scanTranscripts
+        return payload
+    }
+
+    private func install(agent: String, action: String, binary: URL) -> HookInstallResult {
+        switch agent {
+        case "codex":
+            if action == "disconnect" {
+                return HookInstaller.removeNested(fileURL: codexHooksURL, binaryURL: binary)
+            }
+            return HookInstaller.installCodex(
+                configURL: codexConfigURL,
+                hooksURL: codexHooksURL,
+                binaryURL: binary,
+                privacyAccepted: true
+            )
+        case "claude":
+            if action == "disconnect" {
+                return HookInstaller.removeNested(fileURL: claudeSettingsURL, binaryURL: binary)
+            }
+            return HookInstaller.installClaude(
+                settingsURL: claudeSettingsURL,
+                binaryURL: binary,
+                privacyAccepted: true
+            )
+        default:
+            if action == "disconnect" {
+                return HookInstaller.remove(hooksURL: hooksURL, binaryURL: binary, tasksURL: tasksURL)
+            }
+            return HookInstaller.install(
                 hooksURL: hooksURL,
                 binaryURL: binary,
                 tasksURL: tasksURL,
                 privacyAccepted: true
             )
-        } else {
-            result = HookInstaller.status(hooksURL: hooksURL, binaryURL: binary, tasksURL: tasksURL)
         }
-        var payload = result.dictionary
-        payload["scanTranscripts"] = prefs.scanTranscripts
+    }
+
+    private func agentStatus(binary: URL) -> [String: Any] {
+        let cursor = HookInstaller.status(hooksURL: hooksURL, binaryURL: binary, tasksURL: tasksURL)
+        let codex = HookInstaller.codexStatus(configURL: codexConfigURL, hooksURL: codexHooksURL, binaryURL: binary)
+        let claude = HookInstaller.claudeStatus(settingsURL: claudeSettingsURL, binaryURL: binary)
+        var payload = cursor.dictionary
+        payload["agents"] = [
+            "cursor": ["connected": cursor.connected],
+            "codex": ["connected": codex.connected],
+            "claude": ["connected": claude.connected]
+        ]
         return payload
     }
 
@@ -246,6 +288,18 @@ final class AppSession {
 
     private var hooksURL: URL {
         AppConfig.cursorDirectory.appendingPathComponent("hooks.json")
+    }
+
+    private var codexConfigURL: URL {
+        AppConfig.homeDirectory.appendingPathComponent(".codex/config.toml")
+    }
+
+    private var codexHooksURL: URL {
+        AppConfig.homeDirectory.appendingPathComponent(".codex/hooks.json")
+    }
+
+    private var claudeSettingsURL: URL {
+        AppConfig.homeDirectory.appendingPathComponent(".claude/settings.json")
     }
 
     private static func legacyFiles(_ relative: String) -> [URL] {

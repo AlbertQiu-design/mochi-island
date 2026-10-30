@@ -1,4 +1,4 @@
-const APP_NAME = { cursor: "Cursor", codex: "Codex", "grok-bot": "Grok Bot", gpt: "GPT", mochi: "小猫" };
+const APP_NAME = { cursor: "Cursor", codex: "Codex", claude: "Claude", "grok-bot": "Grok Bot", gpt: "GPT", mochi: "小猫" };
 const REFRESH_MS = 5000;
 
 let slotRecords = [];
@@ -37,6 +37,7 @@ window.mochiReply = (rpc, payload) => {
 function taskSource(task) {
   const value = String((task && task.source) || "").trim().toLowerCase();
   if (value === "codex") return "codex";
+  if (value === "claude" || value === "claude-code") return "claude";
   if (value === "grok-bot" || value === "grok" || value === "grokbot" || value === "grok bot") return "grok-bot";
   if (value === "gpt" || value === "chatgpt" || value === "openai") return "gpt";
   if (value === "mochi" || value === "cat" || value === "小猫") return "mochi";

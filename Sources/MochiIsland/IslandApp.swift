@@ -208,6 +208,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
             reply(requestID, session.tasksPayload())
         case "cursorLink":
             reply(requestID, session.linkPayload(
+                agent: body["agent"] as? String ?? "cursor",
                 action: body["linkAction"] as? String ?? "",
                 acknowledged: body["acknowledged"] as? Bool ?? false
             ))
@@ -276,15 +277,11 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
             self.refreshCapsule()
             self.injectPageState()
             self.capsule.apply(prefs: self.session.currentPrefs, force: true)
-            self.settings.reposition(
-                capsule: self.capsule.hitFrame,
-                dock: self.session.currentPrefs.dock,
-                host: self.panel
-            )
+            // Size changes spring the kitten. The settings window stays where it was opened.
         }
-        settings.onLink = { [weak self] action, acknowledged in
+        settings.onLink = { [weak self] agent, action, acknowledged in
             guard let self else { return [:] }
-            return self.session.linkPayload(action: action, acknowledged: acknowledged)
+            return self.session.linkPayload(agent: agent, action: action, acknowledged: acknowledged)
         }
         settings.onScan = { [weak self] enabled in
             self?.session.setScanTranscripts(enabled)
@@ -297,16 +294,16 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
                 self.settings.reposition(capsule: self.capsule.hitFrame, dock: self.session.currentPrefs.dock, host: self.panel)
             }
         }
-        settings.load(prefs: session.currentPrefs, link: session.linkPayload(action: "status", acknowledged: false))
+        settings.load(prefs: session.currentPrefs, link: session.linkPayload(agent: "cursor", action: "status", acknowledged: false))
     }
 
     private func toggleSettings() {
-        settings.load(prefs: session.currentPrefs, link: session.linkPayload(action: "status", acknowledged: false))
+        settings.load(prefs: session.currentPrefs, link: session.linkPayload(agent: "cursor", action: "status", acknowledged: false))
         settings.toggle(capsule: capsule.hitFrame, dock: session.currentPrefs.dock, host: panel)
     }
 
     func revealSettings(tab: SettingsTab = .general) {
-        settings.load(prefs: session.currentPrefs, link: session.linkPayload(action: "status", acknowledged: false))
+        settings.load(prefs: session.currentPrefs, link: session.linkPayload(agent: "cursor", action: "status", acknowledged: false))
         settings.select(tab)
         if !settings.isVisible {
             settings.toggle(capsule: capsule.hitFrame, dock: session.currentPrefs.dock, host: panel)

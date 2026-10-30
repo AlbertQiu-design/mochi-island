@@ -18,7 +18,7 @@
 		</data>
 		<key>Resources/Web/island.js</key>
 		<data>
-		fR2TELJvXDR69wLo1ehYmOl/2IM=
+		cRVZu5nMqM/ewMV1JEu2BbWMoKc=
 		</data>
 		<key>Resources/Web/pets/agent-codex.svg</key>
 		<data>
@@ -135,10 +135,10 @@
 		<dict>
 			<key>cdhash</key>
 			<data>
-			vBs0GLWK0bbVYJVrm8jF8JwviC0=
+			qN9iOZDl27uAsLqxcGZ9wFGdjmM=
 			</data>
 			<key>requirement</key>
-			<string>cdhash H"bc1b3418b58ad1b6d560956b9bc8c5f09c2f882d" or cdhash H"acce32f8880dc68ba76436a00f79c3d89f431232"</string>
+			<string>cdhash H"a8df623990e5dbbb80b0bab170667dc0519d8e63" or cdhash H"e7fbdf7b27506d7c2e26d0e9cba9929942087759"</string>
 		</dict>
 		<key>Resources/AppIcon.icns</key>
 		<dict>
@@ -165,7 +165,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			Z8qvQNgv+L9fqkfbiW8Ifeht+0QneTM3Nsx17UlHa6Y=
+			e1zusS4izUb1ZzJ7YJF7lMnR7JViZLOljZMXUzXUDG8=
 			</data>
 		</dict>
 		<key>Resources/Web/pets/agent-codex.svg</key>
