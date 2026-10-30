@@ -20,9 +20,23 @@ public struct IslandPrefs: Codable, Equatable {
     public var kittenX: Double
     public var kittenY: Double
     public var kittenPlaced: Bool
+    public var pickerCursor: Bool
+    public var pickerCodex: Bool
+    public var pickerGrok: Bool
+    public var pickerGPT: Bool
 
     public static let soundIDs = ["boop", "chirp", "mew", "pop", "twinkle"]
     public static let docks = ["left", "right"]
+    public static let pickerOrder = ["cursor", "codex", "grok-bot", "gpt"]
+
+    public var pickerSources: [String] {
+        var sources: [String] = []
+        if pickerCursor { sources.append("cursor") }
+        if pickerCodex { sources.append("codex") }
+        if pickerGrok { sources.append("grok-bot") }
+        if pickerGPT { sources.append("gpt") }
+        return sources
+    }
 
     public init(
         dx: Double = 0,
@@ -43,7 +57,11 @@ public struct IslandPrefs: Codable, Equatable {
         dock: String = "right",
         kittenX: Double = 1,
         kittenY: Double = 0.5,
-        kittenPlaced: Bool = false
+        kittenPlaced: Bool = false,
+        pickerCursor: Bool = true,
+        pickerCodex: Bool = true,
+        pickerGrok: Bool = true,
+        pickerGPT: Bool = true
     ) {
         self.dx = dx
         self.dy = dy
@@ -64,6 +82,10 @@ public struct IslandPrefs: Codable, Equatable {
         self.kittenX = Self.unit(kittenX)
         self.kittenY = Self.unit(kittenY)
         self.kittenPlaced = kittenPlaced
+        self.pickerCursor = pickerCursor
+        self.pickerCodex = pickerCodex
+        self.pickerGrok = pickerGrok
+        self.pickerGPT = pickerGPT
         if kittenPlaced {
             self.dock = self.kittenX < 0.5 ? "left" : "right"
         }
@@ -87,7 +109,11 @@ public struct IslandPrefs: Codable, Equatable {
             "dock": dock,
             "kitten_x": kittenX,
             "kitten_y": kittenY,
-            "kitten_placed": kittenPlaced
+            "kitten_placed": kittenPlaced,
+            "picker_cursor": pickerCursor,
+            "picker_codex": pickerCodex,
+            "picker_grok": pickerGrok,
+            "picker_gpt": pickerGPT
         ]
     }
 
@@ -97,6 +123,10 @@ public struct IslandPrefs: Codable, Equatable {
         case kittenX = "kitten_x"
         case kittenY = "kitten_y"
         case kittenPlaced = "kitten_placed"
+        case pickerCursor = "picker_cursor"
+        case pickerCodex = "picker_codex"
+        case pickerGrok = "picker_grok"
+        case pickerGPT = "picker_gpt"
     }
 
     public init(from decoder: Decoder) throws {
@@ -120,7 +150,11 @@ public struct IslandPrefs: Codable, Equatable {
             dock: try container.decodeIfPresent(String.self, forKey: .dock) ?? "right",
             kittenX: try container.decodeIfPresent(Double.self, forKey: .kittenX) ?? 1,
             kittenY: try container.decodeIfPresent(Double.self, forKey: .kittenY) ?? 0.5,
-            kittenPlaced: try container.decodeIfPresent(Bool.self, forKey: .kittenPlaced) ?? false
+            kittenPlaced: try container.decodeIfPresent(Bool.self, forKey: .kittenPlaced) ?? false,
+            pickerCursor: try container.decodeIfPresent(Bool.self, forKey: .pickerCursor) ?? true,
+            pickerCodex: try container.decodeIfPresent(Bool.self, forKey: .pickerCodex) ?? true,
+            pickerGrok: try container.decodeIfPresent(Bool.self, forKey: .pickerGrok) ?? true,
+            pickerGPT: try container.decodeIfPresent(Bool.self, forKey: .pickerGPT) ?? true
         )
         self = parsed
     }
@@ -146,6 +180,10 @@ public struct IslandPrefs: Codable, Equatable {
         try container.encode(kittenX, forKey: .kittenX)
         try container.encode(kittenY, forKey: .kittenY)
         try container.encode(kittenPlaced, forKey: .kittenPlaced)
+        try container.encode(pickerCursor, forKey: .pickerCursor)
+        try container.encode(pickerCodex, forKey: .pickerCodex)
+        try container.encode(pickerGrok, forKey: .pickerGrok)
+        try container.encode(pickerGPT, forKey: .pickerGPT)
     }
 
     public static func parse(_ json: [String: Any], base: IslandPrefs = IslandPrefs()) -> IslandPrefs {
@@ -191,6 +229,10 @@ public struct IslandPrefs: Codable, Equatable {
         if next.kittenPlaced {
             next.dock = next.kittenX < 0.5 ? "left" : "right"
         }
+        if let value = json["picker_cursor"] { next.pickerCursor = flag(value, fallback: base.pickerCursor) }
+        if let value = json["picker_codex"] { next.pickerCodex = flag(value, fallback: base.pickerCodex) }
+        if let value = json["picker_grok"] { next.pickerGrok = flag(value, fallback: base.pickerGrok) }
+        if let value = json["picker_gpt"] { next.pickerGPT = flag(value, fallback: base.pickerGPT) }
         return next
     }
 
@@ -209,6 +251,12 @@ public struct IslandPrefs: Codable, Equatable {
         let number = number(value, fallback: fallback)
         if number == 0 { return 1 }
         return min(2, max(0.5, number))
+    }
+
+    private static func flag(_ value: Any, fallback: Bool) -> Bool {
+        if let value = value as? Bool { return value }
+        if let value = value as? NSNumber { return value.boolValue }
+        return fallback
     }
 
     private static func hex(_ value: Any?) -> String? {

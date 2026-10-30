@@ -423,6 +423,8 @@ func SpecConstantsAndShellGeometry() {
         agentCount: 4,
         visible: roomy
     )
+    let fine = IslandPrefs.parse(["pet_scale": 1.37])
+    check(abs(fine.petScale - 1.37) < 0.0001)
     check(abs(grew.frame.maxY - grewClosed.frame.maxY) < 0.1)
     check(abs(grew.frame.midX - grewClosed.frame.midX) < 0.1)
     check(grew.frame.width == AppConfig.capsuleWidth)
@@ -529,6 +531,7 @@ func SpecConstantsAndShellGeometry() {
     let insetTop = (AppConfig.capsulePadY + (AppConfig.agentRow - AppConfig.agentIcon) / 2) * 2
     check(CapsuleOutline.contains(CGPoint(x: insetX + 1, y: tall - insetTop - 1), width: wide, height: tall))
     check(CapsuleOutline.contains(CGPoint(x: 2, y: 2), width: wide, height: tall) == false)
+    check(abs(ShellScale.factor(1.37) - 1.37) < 0.0001)
     check(IslandPrefs.parse(["pet_scale": 1.5]).petScale == 1.5)
     check(IslandPrefs.parse(["pet_scale": 4]).petScale == 2)
     check(IslandPrefs.parse(["pet_scale": 0]).petScale == 1)
@@ -600,6 +603,45 @@ func DockPrefDefaultsToRight() {
     check(right.dock == "right")
     let junk = IslandPrefs.parse(["dock": "middle"], base: IslandPrefs(dock: "left"))
     check(junk.dock == "left")
+}
+
+func PickerFlagsPersistAcrossPrefs() throws {
+    let fresh = IslandPrefs()
+    check(fresh.pickerSources == IslandPrefs.pickerOrder)
+    let hidden = IslandPrefs.parse([
+        "picker_cursor": false,
+        "picker_gpt": false
+    ])
+    check(hidden.pickerCursor == false)
+    check(hidden.pickerCodex)
+    check(hidden.pickerGrok)
+    check(hidden.pickerGPT == false)
+    check(hidden.pickerSources == ["codex", "grok-bot"])
+    check(hidden.dictionary["picker_cursor"] as? Bool == false)
+    check(hidden.dictionary["picker_codex"] as? Bool == true)
+    check(hidden.dictionary["picker_grok"] as? Bool == true)
+    check(hidden.dictionary["picker_gpt"] as? Bool == false)
+    let again = IslandPrefs.parse(hidden.dictionary, base: IslandPrefs())
+    check(again.pickerSources == ["codex", "grok-bot"])
+    let data = try JSONEncoder().encode(hidden)
+    let text = String(data: data, encoding: .utf8) ?? ""
+    check(text.contains("picker_cursor"))
+    check(text.contains("picker_gpt"))
+    let decoded = try JSONDecoder().decode(IslandPrefs.self, from: data)
+    check(decoded.pickerSources == ["codex", "grok-bot"])
+    let legacy = try JSONDecoder().decode(IslandPrefs.self, from: Data("{\"sound\":\"pop\"}".utf8))
+    check(legacy.sound == "pop")
+    check(legacy.pickerSources == IslandPrefs.pickerOrder)
+    let kept = IslandPrefs.parse(["pet_scale": 1.5], base: hidden)
+    check(kept.petScale == 1.5)
+    check(kept.pickerSources == ["codex", "grok-bot"])
+    let numbers = IslandPrefs.parse([
+        "picker_cursor": 0,
+        "picker_codex": 1,
+        "picker_grok": 0,
+        "picker_gpt": 1
+    ])
+    check(numbers.pickerSources == ["codex", "gpt"])
 }
 
 func EmptyFileHasNoSeeds() throws {
@@ -811,6 +853,7 @@ try KittenPositionParsesAndClamps()
 SpecConstantsAndShellGeometry()
 AgentIconsStayOnePerSource()
 DockPrefDefaultsToRight()
+try PickerFlagsPersistAcrossPrefs()
 try EmptyFileHasNoSeeds()
 try OldSeedMigrationKeepsActiveTasks()
 RemoveWhenReadAndDone()

@@ -4,35 +4,55 @@ import ServiceManagement
 import SwiftUI
 
 enum SettingsTab: Int, Hashable, CaseIterable {
-    case dock
-    case looks
-    case colors
+    case general
+    case kitten
     case sound
-    case links
+    case agents
 
     var title: String {
         switch self {
-        case .dock: return "Dock"
-        case .looks: return "Looks"
-        case .colors: return "Colors"
+        case .general: return "General"
+        case .kitten: return "Kitten"
         case .sound: return "Sound"
-        case .links: return "Links"
+        case .agents: return "Agents"
         }
     }
 }
 
+/// Icons the plus picker is allowed to show. Settings writes it; the bubble reads it.
+final class PickerMenu: ObservableObject {
+    static let shared = PickerMenu()
+    @Published private(set) var sources: [String] = IslandPrefs.pickerOrder
+
+    func apply(_ prefs: IslandPrefs) {
+        let next = prefs.pickerSources
+        if next != sources {
+            sources = next
+        }
+    }
+}
+
+final class SettingsPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
+}
+
+enum SettingsChromeMetrics {
+    static let titleRow: CGFloat = 28
+}
+
 @MainActor
-final class SettingsChrome: NSObject {
-    static let width: CGFloat = 420
+final class SettingsChrome: NSObject, NSWindowDelegate {
+    static let width: CGFloat = AppConfig.settingsWidth
     static let height: CGFloat = 540
     static let gap: CGFloat = 8
-    static let palette = [
-        "#ffffff", "#fff6e8", "#241f1c", "#e97868",
-        "#efd36a", "#7dcb8d", "#3d6ea8", "#f4b6c2"
-    ]
-    static let sounds = ["boop", "chirp", "mew", "pop", "twinkle"]
+    static let titleRow: CGFloat = SettingsChromeMetrics.titleRow
+    static let sounds = IslandPrefs.soundIDs
 
-    let panel: CapsulePanel
+    let panel: SettingsPanel
     private let model: SettingsModel
     private let hosting: NSHostingView<SettingsRoot>
     private weak var host: NSWindow?
@@ -54,9 +74,9 @@ final class SettingsChrome: NSObject {
 
     override init() {
         let model = SettingsModel()
-        let panel = CapsulePanel(
+        let panel = SettingsPanel(
             contentRect: NSRect(x: 0, y: 0, width: Self.width, height: Self.height),
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -65,16 +85,21 @@ final class SettingsChrome: NSObject {
         panel.hasShadow = false
         panel.hidesOnDeactivate = false
         panel.isMovable = false
+        panel.isMovableByWindowBackground = false
         panel.ignoresMouseEvents = false
         panel.becomesKeyOnlyIfNeeded = false
         panel.acceptsMouseMovedEvents = true
         panel.isFloatingPanel = true
         panel.isRestorable = false
+        panel.isReleasedWhenClosed = false
         panel.animationBehavior = .none
         panel.title = "Mochi Settings"
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
+        panel.titlebarSeparatorStyle = .none
         panel.worksWhenModal = true
 
-        let hosting = HitHostingView(rootView: SettingsRoot(model: model))
+        let hosting = SettingsHostingView(rootView: SettingsRoot(model: model))
         hosting.sizingOptions = []
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = NSColor.clear.cgColor
@@ -85,9 +110,31 @@ final class SettingsChrome: NSObject {
         self.model = model
         self.hosting = hosting
         super.init()
-        model.onClose = { [weak self] in
-            self?.hide()
-        }
+        panel.delegate = self
+        revealWindowButtons()
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        hide()
+        return false
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        revealWindowButtons()
+    }
+
+    @objc func dismissSettings(_ sender: Any?) {
+        hide()
+    }
+
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        NSSize(width: Self.width, height: Self.height)
+    }
+
+    func windowWillUseStandardFrame(_ window: NSWindow, defaultFrame newFrame: NSRect) -> NSRect {
+        var frame = window.frame
+        frame.size = NSSize(width: Self.width, height: Self.height)
+        return frame
     }
 
     func attach(to host: NSWindow) {
@@ -96,7 +143,10 @@ final class SettingsChrome: NSObject {
         }
         self.host = host
         // Independent of the click-through host so the fullscreen WebView
-        // cannot steal Dock|Looks|Colors|Sound|Links clicks.
+        // cannot steal the tab bar.
+        if host.childWindows?.contains(panel) == true {
+            host.removeChildWindow(panel)
+        }
         panel.level = NSWindow.Level(rawValue: host.level.rawValue + 2)
         panel.collectionBehavior = host.collectionBehavior
         hide()
@@ -120,6 +170,7 @@ final class SettingsChrome: NSObject {
         panel.alphaValue = 1
         panel.orderFrontRegardless()
         panel.makeKeyAndOrderFront(nil)
+        revealWindowButtons()
         panel.makeFirstResponder(hosting)
     }
 
@@ -131,6 +182,18 @@ final class SettingsChrome: NSObject {
     func reposition(capsule: NSRect, dock: String, host: NSWindow) {
         guard isVisible else { return }
         place(capsule: capsule, dock: dock, host: host)
+    }
+
+    private func revealWindowButtons() {
+        for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            guard let button = panel.standardWindowButton(kind) else { continue }
+            button.isHidden = false
+            button.isEnabled = true
+        }
+        if let close = panel.standardWindowButton(.closeButton) {
+            close.target = self
+            close.action = #selector(dismissSettings(_:))
+        }
     }
 
     private func place(capsule: NSRect, dock: String, host: NSWindow) {
@@ -148,46 +211,37 @@ final class SettingsChrome: NSObject {
 
 @MainActor
 final class SettingsModel: ObservableObject {
-    @Published var tab: SettingsTab = .dock
-    @Published var dock = "right"
-    @Published var look = "mochi"
+    @Published var tab: SettingsTab = .general
+    @Published var selectionMoving = false
     @Published var sound = "boop"
-    @Published var fill = "#ffffff"
-    @Published var text = "#241f1c"
-    @Published var stroke = "#2c2926"
-    @Published var cardFill = "#111111"
-    @Published var cardStroke = "#2c2926"
     @Published var cursorConnected = false
     @Published var needsPrivacy = false
     @Published var scanTranscripts = false
     @Published var cursorStatus = "Not connected"
     @Published var cursorButton = "Connect Cursor"
-    @Published var codexStatus = "Upsert into the task file"
-    @Published var grokStatus = "Upsert into the task file"
-    @Published var lookImage: NSImage?
     @Published var petScale = 1.0
-    @Published var bubbleScale = 1.0
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @Published var pickerCursor = true
+    @Published var pickerCodex = true
+    @Published var pickerGrok = true
+    @Published var pickerGPT = true
 
     var onPrefs: (([String: Any]) -> Void)?
     var onLink: ((String, Bool) -> [String: Any])?
     var onScan: ((Bool) -> Void)?
     var onReset: (() -> Void)?
-    var onClose: (() -> Void)?
+    private var selectionTicket = 0
 
     func apply(prefs: IslandPrefs, link: [String: Any]) {
-        dock = prefs.dock
-        look = prefs.look
         sound = IslandPrefs.soundIDs.contains(prefs.sound) ? prefs.sound : "boop"
-        fill = prefs.fill
-        text = prefs.text
-        stroke = prefs.stroke
-        cardFill = prefs.cardFill
-        cardStroke = prefs.cardStroke
         petScale = prefs.petScale
-        bubbleScale = prefs.bubbleScale
         launchAtLogin = SMAppService.mainApp.status == .enabled
         scanTranscripts = prefs.scanTranscripts
+        pickerCursor = prefs.pickerCursor
+        pickerCodex = prefs.pickerCodex
+        pickerGrok = prefs.pickerGrok
+        pickerGPT = prefs.pickerGPT
+        PickerMenu.shared.apply(prefs)
         cursorConnected = link["connected"] as? Bool ?? false
         needsPrivacy = link["needsPrivacy"] as? Bool ?? false
         if let scan = link["scanTranscripts"] as? Bool {
@@ -195,27 +249,48 @@ final class SettingsModel: ObservableObject {
         }
         cursorStatus = cursorConnected ? "Connected" : "Not connected"
         cursorButton = needsPrivacy ? "Continue" : (cursorConnected ? "Disconnect" : "Connect Cursor")
-        if lookImage == nil {
-            lookImage = NSImage(
-                contentsOf: Bundle.main.url(forResource: "happy", withExtension: "png", subdirectory: "Web/pets")
-                    ?? URL(fileURLWithPath: "/dev/null")
-            )
-        }
+    }
+
+    func setPetScale(_ value: Double) {
+        petScale = min(2, max(0.5, value))
+        persist()
     }
 
     func persist() {
+        let snapshot = IslandPrefs(
+            sound: sound,
+            petScale: petScale,
+            pickerCursor: pickerCursor,
+            pickerCodex: pickerCodex,
+            pickerGrok: pickerGrok,
+            pickerGPT: pickerGPT
+        )
         onPrefs?([
-            "dock": dock,
-            "look": look,
             "sound": sound,
-            "fill": fill,
-            "text": text,
-            "stroke": stroke,
-            "card_fill": cardFill,
-            "card_stroke": cardStroke,
             "pet_scale": petScale,
-            "bubble_scale": bubbleScale
+            "picker_cursor": pickerCursor,
+            "picker_codex": pickerCodex,
+            "picker_grok": pickerGrok,
+            "picker_gpt": pickerGPT
         ])
+        PickerMenu.shared.apply(snapshot)
+    }
+
+    @discardableResult
+    func beginSelectionMove() -> Int {
+        selectionMoving = true
+        selectionTicket += 1
+        let ticket = selectionTicket
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            self.endSelectionMove(ticket)
+        }
+        return ticket
+    }
+
+    func endSelectionMove(_ ticket: Int) {
+        guard selectionTicket == ticket else { return }
+        selectionMoving = false
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
@@ -233,7 +308,8 @@ final class SettingsModel: ObservableObject {
 
     func connectCursor() {
         let action = cursorConnected ? "disconnect" : "connect"
-        let result = onLink?(action, cursorConnected || needsPrivacy) ?? [:]
+        // The privacy line is already on the Agents tab, so this click is the acknowledgment.
+        let result = onLink?(action, true) ?? [:]
         if result["needsPrivacy"] as? Bool == true {
             needsPrivacy = true
             cursorButton = "Continue"
@@ -247,60 +323,37 @@ final class SettingsModel: ObservableObject {
     }
 }
 
-private struct SettingsCloseButton: View {
-    var action: () -> Void
-    @State private var hovered = false
-
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(hovered
-                        ? Color(red: 1, green: 95 / 255, blue: 87 / 255)
-                        : Color(white: 0.62))
-                    .frame(width: 14, height: 14)
-                if hovered {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundStyle(Color.black.opacity(0.55))
-                }
-            }
-            .frame(width: 20, height: 20)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovered = $0 }
-        .accessibilityLabel("Close")
-    }
-}
-
 struct SettingsRoot: View {
     @ObservedObject var model: SettingsModel
     @Namespace private var tabNS
 
+    private static let barFill = Color(red: 246 / 255, green: 246 / 255, blue: 247 / 255)
+    private static let selectedFill = Color(red: 232 / 255, green: 232 / 255, blue: 234 / 255)
+    private static let selectedInk = Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255)
+    private static let idleInk = Color(red: 110 / 255, green: 110 / 255, blue: 115 / 255)
+
     var body: some View {
         VStack(spacing: 8) {
-            HStack(alignment: .center, spacing: 10) {
-                SettingsCloseButton { model.onClose?() }
-                settingsTabBar
-            }
-            .padding(.leading, 14)
-            .padding(.trailing, 16)
-            .padding(.top, 14)
-
+            Color.clear
+                .frame(height: SettingsChrome.titleRow)
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
+            settingsTabBar
+                .padding(.horizontal, 16)
             Group {
                 switch model.tab {
-                case .dock: dockPane
-                case .looks: looksPane
-                case .colors: colorsPane
+                case .general: generalPane
+                case .kitten: kittenPane
                 case .sound: soundPane
-                case .links: linksPane
+                case .agents: agentsPane
                 }
             }
             .id(model.tab)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .frame(width: SettingsChrome.width, height: SettingsChrome.height)
+        .padding(.bottom, 6)
+        .frame(width: SettingsChrome.width, height: SettingsChrome.height, alignment: .top)
+        .ignoresSafeArea()
         .background {
             Color.clear
                 .glassEffect(.regular, in: .rect(cornerRadius: 28))
@@ -319,7 +372,7 @@ struct SettingsRoot: View {
         .frame(height: AppConfig.settingsBarHeight)
         .background {
             RoundedRectangle(cornerRadius: AppConfig.settingsBarRadius, style: .continuous)
-                .fill(Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255))
+                .fill(Self.barFill)
         }
     }
 
@@ -329,16 +382,12 @@ struct SettingsRoot: View {
             choose(item)
         } label: {
             Text(item.title)
-                .font(Font(NSFont.systemFont(ofSize: 13, weight: NSFont.Weight(rawValue: 0.29))))
-                .foregroundStyle(selected
-                    ? Color(red: 245 / 255, green: 245 / 255, blue: 247 / 255)
-                    : Color(red: 142 / 255, green: 142 / 255, blue: 147 / 255))
-                .frame(minWidth: AppConfig.settingsTabMinWidth, maxWidth: .infinity, minHeight: 28)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(selected ? Self.selectedInk : Self.idleInk)
+                .frame(maxWidth: .infinity, minHeight: 28)
                 .background {
                     if selected {
-                        RoundedRectangle(cornerRadius: AppConfig.settingsSelectRadius, style: .continuous)
-                            .fill(Color(red: 58 / 255, green: 58 / 255, blue: 58 / 255))
-                            .matchedGeometryEffect(id: "settings-tab", in: tabNS)
+                        selectionPlate
                     }
                 }
         }
@@ -348,105 +397,73 @@ struct SettingsRoot: View {
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 
+    @ViewBuilder
+    private var selectionPlate: some View {
+        let shape = RoundedRectangle(cornerRadius: AppConfig.settingsSelectRadius, style: .continuous)
+        Group {
+            if model.selectionMoving {
+                GlassEffectContainer {
+                    shape
+                        .fill(.clear)
+                        .glassEffect(.regular, in: shape)
+                }
+            } else {
+                shape.fill(Self.selectedFill)
+            }
+        }
+        .matchedGeometryEffect(id: "settings-tab", in: tabNS)
+        .padding(1)
+        .allowsHitTesting(false)
+    }
+
     private func choose(_ item: SettingsTab) {
         guard model.tab != item else { return }
+        let ticket = model.beginSelectionMove()
         withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
             model.tab = item
+        } completion: {
+            model.endSelectionMove(ticket)
         }
     }
 
-    private var dockPane: some View {
+    private var generalPane: some View {
         Form {
-            Section("Kitten") {
+            Section {
                 Button("Reset kitten position") { model.onReset?() }
                 Toggle("Open at login", isOn: $model.launchAtLogin)
                     .onChange(of: model.launchAtLogin) { _, enabled in
                         model.setLaunchAtLogin(enabled)
                     }
-                Text("Drag the kitten anywhere on the screen. The capsule and bubble follow it.")
-                    .foregroundStyle(.secondary)
             }
-            Section("About") {
-                LabeledContent("Mochi Island", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
+            Section {
+                LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
                 LabeledContent("Build", value: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "2")
-                Text("A Mac kitten. Regular Liquid Glass on every surface.")
-                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
     }
 
-    private var looksPane: some View {
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
-        return Form {
-            Section("Choose a pet") {
-                LazyVGrid(columns: columns, spacing: 8) {
-                    Button {
-                        model.look = "mochi"
-                        model.persist()
-                    } label: {
-                        if let image = model.lookImage {
-                            Image(nsImage: image)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 48, height: 48)
-                        } else {
-                            Image(systemName: "pawprint.fill")
-                                .frame(width: 48, height: 48)
-                        }
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel("Mochi")
-                    ForEach(0..<15, id: \.self) { _ in
-                        Button(action: {}) {
-                            Image(systemName: "questionmark")
-                                .frame(width: 48, height: 48)
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(true)
-                        .accessibilityLabel("Coming soon")
-                    }
-                }
-                .padding(.vertical, 4)
-            }
-            Section("Size") {
-                Slider(value: $model.petScale, in: 0.5...2, step: 0.1) {
-                    Text("Pet size")
-                } minimumValueLabel: {
-                    Text("S")
-                } maximumValueLabel: {
-                    Text("L")
-                }
-                .onChange(of: model.petScale) { _, _ in model.persist() }
-                LabeledContent("Scale", value: String(format: "%.1f×", model.petScale))
-            }
-        }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-    }
-
-    private var colorsPane: some View {
+    private var kittenPane: some View {
         Form {
-            Section("Bubble") {
-                hexRow("Fill", text: $model.fill) { model.fill = $0 }
-                hexRow("Text", text: $model.text) { model.text = $0 }
-                hexRow("Stroke", text: $model.stroke) { model.stroke = $0 }
-            }
-            Section("Cards") {
-                hexRow("Fill", text: $model.cardFill) { model.cardFill = $0 }
-                hexRow("Stroke", text: $model.cardStroke) { model.cardStroke = $0 }
-            }
-            Section("Size") {
-                Slider(value: $model.bubbleScale, in: 0.5...2, step: 0.1) {
-                    Text("Bubble size")
+            Section {
+                ZStack {
+                    FullKitten()
+                        .frame(width: 56 * model.petScale, height: 56 * model.petScale)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 112)
+                Slider(value: Binding(
+                    get: { model.petScale },
+                    set: { model.setPetScale($0) }
+                ), in: 0.5...2) {
+                    Text("Size")
                 } minimumValueLabel: {
                     Text("S")
                 } maximumValueLabel: {
                     Text("L")
                 }
-                .onChange(of: model.bubbleScale) { _, _ in model.persist() }
-                LabeledContent("Scale", value: String(format: "%.1f×", model.bubbleScale))
+                LabeledContent("Size", value: String(format: "%.2f×", model.petScale))
             }
         }
         .formStyle(.grouped)
@@ -477,100 +494,56 @@ struct SettingsRoot: View {
         .scrollContentBackground(.hidden)
     }
 
-    private var linksPane: some View {
+    private var agentsPane: some View {
         Form {
             Section("Cursor") {
                 LabeledContent("Status", value: model.cursorStatus)
-                if model.needsPrivacy {
-                    Text("Mochi only reads and writes its own files in ~/.cursor on this Mac. It does not upload chats. Allow and deny stay on this computer.")
-                        .foregroundStyle(.secondary)
-                }
+                Text("Mochi only reads and writes its own files in ~/.cursor on this Mac. It does not upload chats. Allow and deny stay on this computer.")
+                    .foregroundStyle(.secondary)
                 Button(model.cursorButton) { model.connectCursor() }
                 Toggle("Notice recent local agent files", isOn: $model.scanTranscripts)
                     .onChange(of: model.scanTranscripts) { _, enabled in
                         model.onScan?(enabled)
                     }
-            }
-            Section("Codex") {
-                LabeledContent("Status", value: model.codexStatus)
-                Button("Connect Codex") {
-                    model.codexStatus = "Listening for tasks"
-                }
-                Text("Tasks arrive through the shared task file.")
+                Text("Off by default. It records names and times on this Mac, not chat text.")
                     .foregroundStyle(.secondary)
             }
-            Section("Grok Bot") {
-                LabeledContent("Status", value: model.grokStatus)
-                Button("Connect Grok Bot") {
-                    model.grokStatus = "Listening for tasks"
-                }
-                Text("Tasks arrive through the shared task file.")
-                    .foregroundStyle(.secondary)
-            }
-            Section("小猫") {
-                LabeledContent("Status", value: "Local desk pet")
-                Text("小猫 stays on this Mac and does not open another app.")
+            Section("Plus picker") {
+                Toggle("Cursor", isOn: $model.pickerCursor)
+                    .onChange(of: model.pickerCursor) { _, _ in model.persist() }
+                Toggle("Codex", isOn: $model.pickerCodex)
+                    .onChange(of: model.pickerCodex) { _, _ in model.persist() }
+                Toggle("Grok", isOn: $model.pickerGrok)
+                    .onChange(of: model.pickerGrok) { _, _ in model.persist() }
+                Toggle("GPT", isOn: $model.pickerGPT)
+                    .onChange(of: model.pickerGPT) { _, _ in model.persist() }
+                Text("These icons appear in the plus picker.")
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
     }
-
-    private func hexRow(_ title: String, text: Binding<String>, set: @escaping (String) -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title)
-                TextField(title, text: text)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit {
-                        set(SettingsModel.normalizedHex(text.wrappedValue, fallback: text.wrappedValue))
-                        model.persist()
-                    }
-            }
-            HStack(spacing: 6) {
-                ForEach(SettingsChrome.palette, id: \.self) { hex in
-                    Button {
-                        set(hex)
-                        text.wrappedValue = hex
-                        model.persist()
-                    } label: {
-                        Image(systemName: "circle.fill")
-                            .foregroundStyle(Color(hex: hex))
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel(hex)
-                }
-            }
-        }
-    }
-}
-
-extension SettingsModel {
-    static func normalizedHex(_ value: String, fallback: String) -> String {
-        let raw = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if raw.range(of: "^#[0-9a-f]{6}$", options: .regularExpression) != nil { return raw }
-        if raw.range(of: "^[0-9a-f]{6}$", options: .regularExpression) != nil { return "#\(raw)" }
-        return fallback
-    }
-}
-
-private extension Color {
-    init(hex: String) {
-        let body = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
-        var value: UInt64 = 0
-        Scanner(string: body).scanHexInt64(&value)
-        self.init(
-            .sRGB,
-            red: Double((value >> 16) & 0xff) / 255,
-            green: Double((value >> 8) & 0xff) / 255,
-            blue: Double(value & 0xff) / 255,
-            opacity: 1
-        )
-    }
 }
 
 #Preview("Settings") {
     SettingsRoot(model: SettingsModel())
         .frame(width: SettingsChrome.width, height: SettingsChrome.height)
+}
+
+/// Full-size host under a transparent titlebar. Clicks in the traffic-light
+/// strip pass through so Close, miniaturize, and zoom stay live.
+final class SettingsHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override var acceptsFirstResponder: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        let stripHeight = SettingsChromeMetrics.titleRow
+        let strip = NSRect(x: 0, y: bounds.height - stripHeight, width: 86, height: stripHeight)
+        if strip.contains(local) {
+            return nil
+        }
+        return super.hitTest(point)
+    }
 }
