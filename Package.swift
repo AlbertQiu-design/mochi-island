@@ -29,6 +29,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "MochiHookCLI",
+            dependencies: ["MochiCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(

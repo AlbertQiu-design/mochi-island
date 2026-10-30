@@ -8,6 +8,7 @@ public enum SlotFace {
         case "grok-bot": return "grok"
         case "mochi": return "kitten"
         case "codex": return "codex"
+        case "claude": return "claude"
         case "gpt": return "gpt"
         default: return "cursor"
         }
@@ -31,6 +32,7 @@ public enum SlotFace {
         case "grok-bot": return "Grok Bot"
         case "mochi": return "小猫"
         case "codex": return "Codex"
+        case "claude": return "Claude"
         case "gpt": return "GPT"
         default: return "Cursor"
         }
@@ -40,6 +42,7 @@ public enum SlotFace {
     public static func agentMark(for source: String) -> String {
         switch AgentLaunch.normalize(source) {
         case "codex": return "agent-codex"
+        case "claude": return "agent-claude"
         case "grok-bot": return "agent-grok"
         case "gpt": return "agent-gpt"
         case "mochi": return "kitten-mark"
@@ -51,6 +54,7 @@ public enum SlotFace {
         switch AgentLaunch.normalize(source) {
         case "grok-bot": return "Grok"
         case "codex": return "Codex"
+        case "claude": return "Claude"
         case "gpt": return "GPT"
         default: return "Cursor"
         }

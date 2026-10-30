@@ -55,12 +55,13 @@ final class SettingsChrome: NSObject, NSWindowDelegate {
     let panel: SettingsPanel
     private let model: SettingsModel
     private let hosting: NSHostingView<SettingsRoot>
+    private let buttonHost: SettingsButtonHost
     private weak var host: NSWindow?
 
     var onPrefs: (([String: Any]) -> Void)? {
         didSet { model.onPrefs = onPrefs }
     }
-    var onLink: ((String, Bool) -> [String: Any])? {
+    var onLink: ((String, String, Bool) -> [String: Any])? {
         didSet { model.onLink = onLink }
     }
     var onScan: ((Bool) -> Void)? {
@@ -103,12 +104,16 @@ final class SettingsChrome: NSObject, NSWindowDelegate {
         hosting.sizingOptions = []
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = NSColor.clear.cgColor
+        let buttons = SettingsButtonHost(frame: NSRect(x: 0, y: 0, width: Self.width, height: Self.height))
+        hosting.frame = buttons.bounds
         hosting.autoresizingMask = [NSView.AutoresizingMask.width, NSView.AutoresizingMask.height]
-        panel.contentView = hosting
+        buttons.addSubview(hosting)
+        panel.contentView = buttons
 
         self.panel = panel
         self.model = model
         self.hosting = hosting
+        self.buttonHost = buttons
         super.init()
         panel.delegate = self
         revealWindowButtons()
@@ -170,8 +175,8 @@ final class SettingsChrome: NSObject, NSWindowDelegate {
         panel.alphaValue = 1
         panel.orderFrontRegardless()
         panel.makeKeyAndOrderFront(nil)
-        revealWindowButtons()
         panel.makeFirstResponder(hosting)
+        revealWindowButtons()
     }
 
     func hide() {
@@ -185,15 +190,12 @@ final class SettingsChrome: NSObject, NSWindowDelegate {
     }
 
     private func revealWindowButtons() {
-        for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-            guard let button = panel.standardWindowButton(kind) else { continue }
-            button.isHidden = false
-            button.isEnabled = true
-        }
+        buttonHost.placeButtons()
         if let close = panel.standardWindowButton(.closeButton) {
             close.target = self
             close.action = #selector(dismissSettings(_:))
         }
+        buttonHost.placeButtons()
     }
 
     private func place(capsule: NSRect, dock: String, host: NSWindow) {
@@ -215,10 +217,16 @@ final class SettingsModel: ObservableObject {
     @Published var selectionMoving = false
     @Published var sound = "boop"
     @Published var cursorConnected = false
+    @Published var codexConnected = false
+    @Published var claudeConnected = false
     @Published var needsPrivacy = false
     @Published var scanTranscripts = false
     @Published var cursorStatus = "Not connected"
+    @Published var codexStatus = "Not connected"
+    @Published var claudeStatus = "Not connected"
     @Published var cursorButton = "Connect Cursor"
+    @Published var codexButton = "Connect Codex"
+    @Published var claudeButton = "Connect Claude"
     @Published var petScale = 1.0
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
     @Published var pickerCursor = true
@@ -227,7 +235,7 @@ final class SettingsModel: ObservableObject {
     @Published var pickerGPT = true
 
     var onPrefs: (([String: Any]) -> Void)?
-    var onLink: ((String, Bool) -> [String: Any])?
+    var onLink: ((String, String, Bool) -> [String: Any])?
     var onScan: ((Bool) -> Void)?
     var onReset: (() -> Void)?
     private var selectionTicket = 0
@@ -242,13 +250,31 @@ final class SettingsModel: ObservableObject {
         pickerGrok = prefs.pickerGrok
         pickerGPT = prefs.pickerGPT
         PickerMenu.shared.apply(prefs)
-        cursorConnected = link["connected"] as? Bool ?? false
-        needsPrivacy = link["needsPrivacy"] as? Bool ?? false
         if let scan = link["scanTranscripts"] as? Bool {
             scanTranscripts = scan
         }
+        applyAgents(link)
+    }
+
+    func applyAgents(_ link: [String: Any]) {
+        let agents = link["agents"] as? [String: [String: Any]] ?? [:]
+        cursorConnected = connectedFlag(agents["cursor"]) ?? (link["connected"] as? Bool ?? false)
+        codexConnected = connectedFlag(agents["codex"]) ?? false
+        claudeConnected = connectedFlag(agents["claude"]) ?? false
+        needsPrivacy = link["needsPrivacy"] as? Bool ?? false
         cursorStatus = cursorConnected ? "Connected" : "Not connected"
+        codexStatus = codexConnected ? "Connected" : "Not connected"
+        claudeStatus = claudeConnected ? "Connected" : "Not connected"
         cursorButton = needsPrivacy ? "Continue" : (cursorConnected ? "Disconnect" : "Connect Cursor")
+        codexButton = codexConnected ? "Disconnect" : "Connect Codex"
+        claudeButton = claudeConnected ? "Disconnect" : "Connect Claude"
+    }
+
+    private func connectedFlag(_ row: [String: Any]?) -> Bool? {
+        guard let row else { return nil }
+        if let value = row["connected"] as? Bool { return value }
+        if let value = row["connected"] as? NSNumber { return value.boolValue }
+        return nil
     }
 
     func setPetScale(_ value: Double) {
@@ -306,20 +332,20 @@ final class SettingsModel: ObservableObject {
         }
     }
 
-    func connectCursor() {
-        let action = cursorConnected ? "disconnect" : "connect"
-        // The privacy line is already on the Agents tab, so this click is the acknowledgment.
-        let result = onLink?(action, true) ?? [:]
-        if result["needsPrivacy"] as? Bool == true {
-            needsPrivacy = true
-            cursorButton = "Continue"
-            return
+    func connect(_ agent: String) {
+        let connected: Bool
+        switch agent {
+        case "codex": connected = codexConnected
+        case "claude": connected = claudeConnected
+        default: connected = cursorConnected
         }
-        cursorConnected = result["connected"] as? Bool ?? false
-        scanTranscripts = result["scanTranscripts"] as? Bool ?? scanTranscripts
-        cursorStatus = cursorConnected ? "Connected" : "Not connected"
-        cursorButton = cursorConnected ? "Disconnect" : "Connect Cursor"
-        needsPrivacy = false
+        let action = connected ? "disconnect" : "connect"
+        // The privacy line is already on the Agents tab, so this click is the acknowledgment.
+        let result = onLink?(agent, action, true) ?? [:]
+        if let scan = result["scanTranscripts"] as? Bool {
+            scanTranscripts = scan
+        }
+        applyAgents(result)
     }
 }
 
@@ -356,7 +382,7 @@ struct SettingsRoot: View {
         .ignoresSafeArea()
         .background {
             Color.clear
-                .glassEffect(.regular, in: .rect(cornerRadius: 28))
+                .glassEffect(.regular.tint(nil), in: .rect(cornerRadius: 28))
                 .allowsHitTesting(false)
         }
         .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
@@ -381,17 +407,18 @@ struct SettingsRoot: View {
         return Button {
             choose(item)
         } label: {
-            Text(item.title)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(selected ? Self.selectedInk : Self.idleInk)
-                .frame(maxWidth: .infinity, minHeight: 28)
-                .background {
-                    if selected {
-                        selectionPlate
-                    }
-                }
+            ZStack {
+                if selected { selectionPlate }
+                Text(item.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(selected ? Self.selectedInk : Self.idleInk)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TabHitStyle())
+        .frame(maxWidth: .infinity)
+        .frame(height: max(28, AppConfig.settingsBarHeight - 4))
         .contentShape(Rectangle())
         .accessibilityLabel(item.title)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
@@ -413,7 +440,6 @@ struct SettingsRoot: View {
         }
         .matchedGeometryEffect(id: "settings-tab", in: tabNS)
         .padding(1)
-        .allowsHitTesting(false)
     }
 
     private func choose(_ item: SettingsTab) {
@@ -500,13 +526,25 @@ struct SettingsRoot: View {
                 LabeledContent("Status", value: model.cursorStatus)
                 Text("Mochi only reads and writes its own files in ~/.cursor on this Mac. It does not upload chats. Allow and deny stay on this computer.")
                     .foregroundStyle(.secondary)
-                Button(model.cursorButton) { model.connectCursor() }
+                Button(model.cursorButton) { model.connect("cursor") }
                 Toggle("Notice recent local agent files", isOn: $model.scanTranscripts)
                     .onChange(of: model.scanTranscripts) { _, enabled in
                         model.onScan?(enabled)
                     }
                 Text("Off by default. It records names and times on this Mac, not chat text.")
                     .foregroundStyle(.secondary)
+            }
+            Section("Codex") {
+                LabeledContent("Status", value: model.codexStatus)
+                Text("Connect installs Mochi's hook in ~/.codex. A submitted chat adds the Codex icon. The prompt stays on this Mac, in Codex.")
+                    .foregroundStyle(.secondary)
+                Button(model.codexButton) { model.connect("codex") }
+            }
+            Section("Claude") {
+                LabeledContent("Status", value: model.claudeStatus)
+                Text("Connect installs Mochi's command hook in ~/.claude/settings.json.")
+                    .foregroundStyle(.secondary)
+                Button(model.claudeButton) { model.connect("claude") }
             }
             Section("Plus picker") {
                 Toggle("Cursor", isOn: $model.pickerCursor)
@@ -517,7 +555,7 @@ struct SettingsRoot: View {
                     .onChange(of: model.pickerGrok) { _, _ in model.persist() }
                 Toggle("GPT", isOn: $model.pickerGPT)
                     .onChange(of: model.pickerGPT) { _, _ in model.persist() }
-                Text("These icons appear in the plus picker.")
+                Text("These icons appear in the plus picker. ChatGPT and Grok launch from there.")
                     .foregroundStyle(.secondary)
             }
         }
@@ -526,9 +564,44 @@ struct SettingsRoot: View {
     }
 }
 
+private struct TabHitStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+    }
+}
+
 #Preview("Settings") {
     SettingsRoot(model: SettingsModel())
         .frame(width: SettingsChrome.width, height: SettingsChrome.height)
+}
+
+/// Holds close, minimize, and zoom inside the glass panel.
+final class SettingsButtonHost: NSView {
+    override func layout() {
+        super.layout()
+        placeButtons()
+    }
+
+    func placeButtons() {
+        guard let window else { return }
+        let kinds: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+        var x: CGFloat = 16
+        for kind in kinds {
+            guard let button = window.standardWindowButton(kind) else { continue }
+            button.isHidden = false
+            button.isEnabled = true
+            if button.superview !== self {
+                button.removeFromSuperview()
+                addSubview(button)
+            }
+            let size = button.bounds.width > 4 ? button.bounds.size : NSSize(width: 14, height: 14)
+            let y = bounds.height - 9 - size.height
+            button.setFrameOrigin(NSPoint(x: x, y: y))
+            x += size.width + 6
+        }
+    }
 }
 
 /// Full-size host under a transparent titlebar. Clicks in the traffic-light

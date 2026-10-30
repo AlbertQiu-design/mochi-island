@@ -136,6 +136,13 @@ struct AgentMark: View {
             let scale = min(size.width, size.height) / 28
             context.scaleBy(x: scale, y: scale)
             switch AgentLaunch.normalize(source) {
+            case "claude":
+                context.fill(Path(ellipseIn: CGRect(x: 1, y: 1, width: 26, height: 26)), with: .color(Color(red: 204 / 255, green: 122 / 255, blue: 92 / 255)))
+                var mark = Path()
+                mark.move(to: CGPoint(x: 18, y: 8))
+                mark.addQuadCurve(to: CGPoint(x: 10, y: 14), control: CGPoint(x: 8, y: 8))
+                mark.addQuadCurve(to: CGPoint(x: 18, y: 20), control: CGPoint(x: 8, y: 20))
+                context.stroke(mark, with: .color(.white), style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
             case "codex":
                 for point in [CGPoint(x: 8, y: 8), CGPoint(x: 20, y: 8), CGPoint(x: 8, y: 20), CGPoint(x: 20, y: 20)] {
                     context.fill(Path(ellipseIn: CGRect(x: point.x - 6.5, y: point.y - 6.5, width: 13, height: 13)), with: .color(Color(red: 43 / 255, green: 181 / 255, blue: 160 / 255)))

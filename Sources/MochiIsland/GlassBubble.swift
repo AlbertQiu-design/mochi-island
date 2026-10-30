@@ -126,7 +126,7 @@ struct BubbleFace: View {
     @ObservedObject private var pickerMenu = PickerMenu.shared
 
     var body: some View {
-        let shape = BubbleShape(radius: AppConfig.bubbleRadius, beakY: model.beakY, pointsRight: model.pointsRight)
+        let plate = RoundedRectangle(cornerRadius: AppConfig.bubbleRadius, style: .continuous)
         HStack(spacing: 0) {
             if !model.pointsRight {
                 Color.clear.frame(width: AppConfig.beakWidth)
@@ -138,10 +138,19 @@ struct BubbleFace: View {
             }
         }
         .background {
-            GlassEffectContainer {
-                shape
-                    .fill(.clear)
-                    .glassEffect(.regular, in: shape)
+            // Same regular liquid glass as the capsule. Standard shapes merge into the beak.
+            // A custom shape here was painting a solid blue plate.
+            GlassEffectContainer(spacing: 24) {
+                plate
+                    .fill(Color.clear)
+                    .glassEffect(.regular.tint(nil), in: plate)
+                    .padding(model.pointsRight ? .trailing : .leading, 2)
+                Capsule()
+                    .fill(Color.clear)
+                    .frame(width: AppConfig.beakHeight, height: AppConfig.beakWidth + 8)
+                    .glassEffect(.regular.tint(nil), in: Capsule())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: model.pointsRight ? .trailing : .leading)
+                    .offset(y: model.beakY - model.computedHeight / 2)
             }
             .allowsHitTesting(false)
         }
@@ -325,7 +334,7 @@ final class BubblePanel: NSObject {
         panel.animationBehavior = .none
         panel.title = "Mochi Bubble"
         panel.level = .floating
-        let hosting = NSHostingView(rootView: BubbleFace(model: model))
+        let hosting = BubbleHostingView(rootView: BubbleFace(model: model))
         hosting.sizingOptions = []
         hosting.wantsLayer = true
         hosting.layer?.isOpaque = false
@@ -412,6 +421,32 @@ final class BubblePanel: NSObject {
         case .card, .alert:
             let body = AppConfig.bubblePadY * 2 + max(16, title) + appLine + status + summary + choices + 12
             model.computedHeight = max(AppConfig.bubbleMinHeight, body)
+        }
+    }
+}
+
+/// Drops the legacy visual-effect backdrop. That view is the solid light-blue fill.
+final class BubbleHostingView<Content: View>: NSHostingView<Content> {
+    private var strippedVisualEffects = false
+    override var isOpaque: Bool { false }
+
+    override func layout() {
+        super.layout()
+        layer?.isOpaque = false
+        layer?.backgroundColor = NSColor.clear.cgColor
+        guard !strippedVisualEffects else { return }
+        strippedVisualEffects = true
+        stripVisualEffects(self)
+    }
+
+    private func stripVisualEffects(_ view: NSView) {
+        for subview in view.subviews {
+            if let material = subview as? NSVisualEffectView {
+                material.isHidden = true
+                material.removeFromSuperview()
+            } else {
+                stripVisualEffects(subview)
+            }
         }
     }
 }

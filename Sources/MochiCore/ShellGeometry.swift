@@ -78,37 +78,59 @@ public enum ShellGeometry {
         return (kitten, divider, agents, plus, gear)
     }
 
-    /// Expanded frames keep the collapsed kitten's top edge and grow downward.
+    /// Expanded frames keep the kitten where it is.
+    /// The menu grows downward when it fits below the kitten. Otherwise it grows upward and the kitten stays at the bottom.
     public static func placeCapsule(
         anchorCenter: CGPoint,
         expanded: Bool,
         agentCount: Int,
         visible: CGRect,
         scale: CGFloat = 1
-    ) -> (frame: CGRect, scrolls: Bool) {
+    ) -> (frame: CGRect, scrolls: Bool, upward: Bool) {
         let s = ShellScale.factor(scale)
         let kitten = AppConfig.kittenSize * s
         let center = clampCenter(anchorCenter, size: kitten, visible: visible)
         let top = center.y + kitten / 2
+        let bottom = center.y - kitten / 2
         if !expanded {
             return (
-                CGRect(
-                    x: center.x - kitten / 2,
-                    y: center.y - kitten / 2,
-                    width: kitten,
-                    height: kitten
-                ),
+                CGRect(x: center.x - kitten / 2, y: bottom, width: kitten, height: kitten),
+                false,
                 false
             )
         }
         let natural = contentHeight(agentCount: agentCount, scale: s)
-        let room = max(kitten, top - visible.minY)
-        let height = min(natural, room)
-        let scrolls = natural > height + 0.5
         let width = AppConfig.capsuleWidth * s
         let x = center.x - width / 2
-        let y = top - height
-        return (CGRect(x: x, y: y, width: width, height: height), scrolls)
+        let roomDown = max(kitten, top - visible.minY)
+        let roomUp = max(kitten, visible.maxY - bottom)
+        if natural <= roomDown + 0.5 {
+            return (CGRect(x: x, y: top - natural, width: width, height: natural), false, false)
+        }
+        if natural <= roomUp + 0.5 {
+            return (CGRect(x: x, y: bottom, width: width, height: natural), false, true)
+        }
+        if roomDown >= roomUp {
+            let height = min(natural, roomDown)
+            return (CGRect(x: x, y: top - height, width: width, height: height), true, false)
+        }
+        let height = min(natural, max(kitten, visible.maxY - bottom))
+        return (CGRect(x: x, y: bottom, width: width, height: height), natural > height + 0.5, true)
+    }
+
+    /// Distance from the top of the open capsule to the agent list, and the chrome below that list.
+    public static func agentChrome(agentCount: Int, scale: CGFloat, upward: Bool) -> (agentsTop: CGFloat, tail: CGFloat) {
+        let s = ShellScale.factor(scale)
+        let count = max(0, agentCount)
+        let before: CGFloat = count == 0 ? 0 : AppConfig.rowGap
+        if !upward {
+            let tops = stack(agentCount: count, scale: s)
+            let tail = (before + AppConfig.controlRow + AppConfig.rowGap + AppConfig.controlRow + AppConfig.capsulePadY) * s
+            return (tops.agents, tail)
+        }
+        let head = (AppConfig.capsulePadY + AppConfig.controlRow + AppConfig.rowGap + AppConfig.controlRow + before) * s
+        let tail = (AppConfig.dividerGap + AppConfig.dividerHeight + AppConfig.dividerGap + AppConfig.agentRow + AppConfig.capsulePadY) * s
+        return (head, tail)
     }
 }
 
@@ -224,7 +246,7 @@ public struct AgentIconRow: Equatable {
 }
 
 public enum AgentIconList {
-    public static let order = ["cursor", "codex", "grok-bot", "gpt"]
+    public static let order = ["cursor", "codex", "claude", "grok-bot", "gpt"]
 
     /// One row per agent. Running and waiting stay. A finished row stays until it has been opened
     /// and the bubble has closed. `holding` keeps the open finished row on screen through that close.

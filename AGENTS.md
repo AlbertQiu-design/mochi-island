@@ -28,11 +28,11 @@ The page talks to Swift only through `webkit.messageHandlers.island`. Each call 
 | `getState` | pet snapshot plus `slots`, `selected`, and `dock` |
 | `play` | play with the pet |
 | `getTasks` | current Cursor tasks |
-| `cursorLink` | connect or disconnect hooks. `linkAction` is `connect`, `disconnect`, or `status`. First connect needs `acknowledged: true` after the privacy line is shown |
+| `cursorLink` | connect or disconnect hooks for an agent. Pass `source` as `cursor`, `codex`, or `claude`. `linkAction` is `connect`, `disconnect`, or `status`. First Cursor connect needs `acknowledged: true` after the privacy line is shown |
 | `cursorChoice` | Bubble choice. Writes `~/.cursor/mochi-island-reply.json`. Does not open an agent window |
-| `openAgent` | Title or empty bubble space. `source` is `cursor`, `codex`, `grok-bot`, `gpt`, or `mochi`. Brings that app forward, or opens its site when the app is not installed. `mochi` stays on this Mac |
+| `openAgent` | Title or empty bubble space. `source` is `cursor`, `codex`, `claude`, `grok-bot`, `gpt`, or `mochi`. Brings that app forward, or opens its site when the app is not installed. `mochi` stays on this Mac |
 | `setScan` | optional local file notice. Default off. It records names and times, not chat text |
-| `createSlot` | Still accepted. The plus button does not create a seed; it opens Cursor, Codex, Grok, or GPT |
+| `createSlot` | Still accepted. The plus button does not create a seed; it opens Cursor, Codex, Claude, Grok, or GPT |
 
 Do not add `fetch` to a localhost URL. Do not add a new action without a row in this table.
 
@@ -67,7 +67,7 @@ Do not drive Cursor with AppleScript or Accessibility. Do not start agents with 
 
 Prompt and command text are not stored. Permission bubbles only say allow or deny.
 
-Tasks in `~/.cursor/mochi-island-tasks.json` share one schema and include `source`: `cursor`, `codex`, `grok-bot`, `gpt`, or `mochi`. Cursor tasks are written by `MochiHookCLI`. Codex, Grok Bot, and GPT tasks are written by `Scripts/mochi-upsert-task.sh` (`source=gpt` is accepted). Opening an agent brings the app forward. `Codex.app` is not required: when it is missing, Codex opens `https://chatgpt.com/codex`. GPT prefers `ChatGPT.app`, otherwise `https://chatgpt.com`. Grok Bot opens `Grok Bot.app` or `Grok.app` when one is installed, otherwise `https://grok.com`. `mochi` stays on this Mac. Do not use AppleScript or Accessibility to focus a text field.
+Tasks in `~/.cursor/mochi-island-tasks.json` share one schema and include `source`: `cursor`, `codex`, `claude`, `grok-bot`, `gpt`, or `mochi`. Cursor tasks are written by `MochiHookCLI` from `~/.cursor/hooks.json`. Codex tasks use the same CLI after Connect Codex writes `~/.codex/hooks.json` and turns on `features.hooks` in `~/.codex/config.toml`. Claude Code tasks use the same CLI after Connect Claude writes hooks into `~/.claude/settings.json`. Grok Bot and GPT tasks can still be written by `Scripts/mochi-upsert-task.sh` (`source=gpt` and `source=claude` are accepted). Opening an agent brings the app forward. `Codex.app` is not required: when it is missing, Codex opens `https://chatgpt.com/codex`. Claude opens `Claude.app` or `https://claude.ai`. GPT prefers `ChatGPT.app`, otherwise `https://chatgpt.com`. Grok Bot opens `Grok Bot.app` or `Grok.app` when one is installed, otherwise `https://grok.com`. `mochi` stays on this Mac. Do not use AppleScript or Accessibility to focus a text field.
 
 ## UI
 

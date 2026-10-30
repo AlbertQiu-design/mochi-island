@@ -18,6 +18,8 @@ public enum AgentLaunch {
         switch value {
         case "codex":
             return "codex"
+        case "claude", "claude-code", "claude code":
+            return "claude"
         case "grok", "grok-bot", "grokbot", "grok bot":
             return "grok-bot"
         case "gpt", "chatgpt", "openai":
@@ -46,6 +48,10 @@ public enum AgentLaunch {
             names = ["Codex"]
             fallback = "https://chatgpt.com/codex"
             missing = "Codex.app is not installed; opened the Codex page."
+        case "claude":
+            names = ["Claude"]
+            fallback = "https://claude.ai"
+            missing = "Claude.app is not installed; opened the Claude page."
         case "grok-bot":
             names = ["Grok Bot", "Grok"]
             fallback = "https://grok.com"

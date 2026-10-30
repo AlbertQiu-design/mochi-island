@@ -407,9 +407,12 @@ func SpecConstantsAndShellGeometry() {
         agentCount: 4,
         visible: visible
     )
-    check(abs(opened.frame.maxY - collapsed.frame.maxY) < 0.1)
+    check(opened.upward)
+    check(opened.scrolls == false)
+    check(abs(opened.frame.minY - collapsed.frame.minY) < 0.1)
+    check(abs(opened.frame.height - ShellGeometry.contentHeight(agentCount: 4)) < 0.1)
+    check(opened.frame.maxY <= visible.maxY + 0.1)
     check(opened.frame.minY >= visible.minY - 0.1)
-    check(opened.scrolls)
     let roomy = CGRect(x: 0, y: 0, width: 800, height: 900)
     let grew = ShellGeometry.placeCapsule(
         anchorCenter: CGPoint(x: 400, y: 600),
@@ -425,6 +428,7 @@ func SpecConstantsAndShellGeometry() {
     )
     let fine = IslandPrefs.parse(["pet_scale": 1.37])
     check(abs(fine.petScale - 1.37) < 0.0001)
+    check(grew.upward == false)
     check(abs(grew.frame.maxY - grewClosed.frame.maxY) < 0.1)
     check(abs(grew.frame.midX - grewClosed.frame.midX) < 0.1)
     check(grew.frame.width == AppConfig.capsuleWidth)
@@ -453,7 +457,31 @@ func SpecConstantsAndShellGeometry() {
         visible: visible
     )
     check(crowded.scrolls)
+    check(crowded.upward == false)
     check(crowded.frame.height <= visible.height)
+    check(crowded.frame.minY >= visible.minY - 0.1)
+    let lowScreen = CGRect(x: 0, y: 0, width: 800, height: 140)
+    let lowClosed = ShellGeometry.placeCapsule(
+        anchorCenter: CGPoint(x: 400, y: 40),
+        expanded: false,
+        agentCount: 4,
+        visible: lowScreen
+    )
+    let lowOpen = ShellGeometry.placeCapsule(
+        anchorCenter: CGPoint(x: 400, y: 40),
+        expanded: true,
+        agentCount: 4,
+        visible: lowScreen
+    )
+    check(lowOpen.upward)
+    check(lowOpen.scrolls)
+    check(abs(lowOpen.frame.minY - lowClosed.frame.minY) < 0.1)
+    check(lowOpen.frame.maxY <= lowScreen.maxY + 0.1)
+    let downChrome = ShellGeometry.agentChrome(agentCount: 4, scale: 1, upward: false)
+    let upChrome = ShellGeometry.agentChrome(agentCount: 4, scale: 1, upward: true)
+    let block = 4 * AppConfig.agentRow + 3 * AppConfig.rowGap
+    check(abs(downChrome.agentsTop + block + downChrome.tail - ShellGeometry.contentHeight(agentCount: 4)) < 0.1)
+    check(abs(upChrome.agentsTop + block + upChrome.tail - ShellGeometry.contentHeight(agentCount: 4)) < 0.1)
     let rightCapsule = CGRect(x: 1000, y: 200, width: AppConfig.capsuleWidth, height: 361)
     let rightAnchor = CGRect(x: rightCapsule.midX - 14, y: 280, width: 28, height: 28)
     let rightBubble = BubblePlacer.place(anchor: rightAnchor, capsule: rightCapsule, size: CGSize(width: 220, height: 120), screen: screen)
@@ -818,6 +846,105 @@ func NewWaitSelectsOnlyAfterTheFirstSnapshot() {
     check(second.slots.first { $0.id == "w2" }?.source == "codex")
 }
 
+func SubmittedChatKeepsTheAgentAndDropsThePrompt() throws {
+    let secret = "合并到一个文件"
+    let outcome = HookEvents.interpret(sourceFlag: nil, payload: [
+        "hook_event_name": "beforeSubmitPrompt",
+        "conversation_id": "11111111-2222-3333-4444-555555555555",
+        "prompt": secret,
+        "command": "rm -rf /tmp/nope",
+        "message": "secret message",
+        "tool_input": ["command": "ls"]
+    ])
+    check(outcome?.source == "cursor")
+    check(outcome?.title == "Cursor")
+    check(outcome?.status == "running")
+    check(outcome?.waitsForPermission == false)
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-hook-\(UUID().uuidString).json")
+    HookEvents.commit(outcome!, tasksURL: url, now: 20)
+    let text = String(data: try Data(contentsOf: url), encoding: .utf8) ?? ""
+    check(text.contains(secret) == false)
+    check(text.contains("rm -rf") == false)
+    check(text.contains("secret message") == false)
+    check(text.contains("\"source\" : \"cursor\"") || text.contains("\"source\":\"cursor\""))
+    check(text.contains("transcript") == false)
+    let codex = HookEvents.interpret(sourceFlag: "codex", payload: [
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": "codex-session",
+        "prompt": secret
+    ])
+    check(codex?.source == "codex")
+    check(codex?.title == "Codex")
+    check(codex?.status == "running")
+    let permission = HookEvents.interpret(sourceFlag: nil, payload: [
+        "hook_event_name": "beforeShellExecution",
+        "conversation_id": "11111111-2222-3333-4444-555555555555",
+        "command": "echo hi"
+    ])
+    check(permission?.status == "wait")
+    check(permission?.waitsForPermission == true)
+    check(permission?.permissionStyle == "cursor")
+    check(permission?.options.map(\.self["id"]) == ["allow", "deny"])
+    let claude = HookEvents.interpret(sourceFlag: "claude", payload: [
+        "hook_event_name": "PermissionRequest",
+        "session_id": "claude-1",
+        "command": "echo hi"
+    ])
+    check(claude?.source == "claude")
+    check(claude?.status == "running")
+    check(claude?.waitsForPermission == false)
+    let cursorAgain = HookEvents.interpret(sourceFlag: "claude", payload: [
+        "hook_event_name": "UserPromptSubmit",
+        "cursor_version": "1.0",
+        "session_id": "from-cursor",
+        "prompt": secret
+    ])
+    check(cursorAgain?.source == "cursor")
+    let stdout = HookEvents.permissionStdout(style: "codex", action: "deny")
+    let decision = (stdout["hookSpecificOutput"] as? [String: Any])?["decision"] as? [String: Any]
+    check(decision?["behavior"] as? String == "deny")
+    check(HookEvents.permissionStdout(style: "cursor", action: "allow")["permission"] as? String == "allow")
+}
+
+func CodexAndClaudeHooksInstallMarkedCommands() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let binary = directory.appendingPathComponent("MochiHookCLI")
+    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: binary)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary.path)
+    let config = directory.appendingPathComponent("config.toml")
+    try "[features]\njs_repl = false\n".write(to: config, atomically: true, encoding: .utf8)
+    let hooks = directory.appendingPathComponent("hooks.json")
+    let existing = #"{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"/bin/echo keep"}]}]}}"#
+    try existing.write(to: hooks, atomically: true, encoding: .utf8)
+    let blocked = HookInstaller.installCodex(configURL: config, hooksURL: hooks, binaryURL: binary, privacyAccepted: false)
+    check(blocked.needsPrivacy)
+    check(blocked.connected == false)
+    let installed = HookInstaller.installCodex(configURL: config, hooksURL: hooks, binaryURL: binary, privacyAccepted: true)
+    check(installed.connected)
+    let configText = try String(contentsOf: config, encoding: .utf8)
+    check(configText.contains("js_repl = false"))
+    check(configText.contains("hooks = true"))
+    let data = try Data(contentsOf: hooks)
+    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    let groups = ((json?["hooks"] as? [String: Any])?["UserPromptSubmit"] as? [[String: Any]]) ?? []
+    let commands = groups.flatMap { $0["hooks"] as? [[String: Any]] ?? [] }
+    check(commands.contains { ($0["command"] as? String)?.contains("/bin/echo keep") == true })
+    check(commands.contains { ($0[AppConfig.hookMarker] as? Int) == AppConfig.hookVersion && ($0["command"] as? String)?.contains("--source codex") == true })
+    let settings = directory.appendingPathComponent("settings.json")
+    try #"{"theme":"dark","hooks":{}}"#.write(to: settings, atomically: true, encoding: .utf8)
+    let claude = HookInstaller.installClaude(settingsURL: settings, binaryURL: binary, privacyAccepted: true)
+    check(claude.connected)
+    let saved = try JSONSerialization.jsonObject(with: Data(contentsOf: settings)) as? [String: Any]
+    check(saved?["theme"] as? String == "dark")
+    let removed = HookInstaller.removeNested(fileURL: hooks, binaryURL: binary)
+    check(removed.connected == false)
+    let ambiguous = "features.hooks = false\n\n[features]\njs_repl = false\n"
+    check(CodexFeatureFlag.enablingHooks(in: ambiguous) == nil)
+    check(CodexFeatureFlag.isEnabled(in: "features.hooks = true\n") == true)
+    check(CodexFeatureFlag.isEnabled(in: ambiguous) == false)
+}
+
 func LiveHooksFixWhenAsked() {
         guard let binary = ProcessInfo.processInfo.environment["MOCHI_FIX_LIVE_HOOKS"], !binary.isEmpty else { return }
         let cursor = AppConfig.cursorDirectory
@@ -862,5 +989,7 @@ CreateSlotAppendsAFaceWithoutATaskFile()
 KittenV1FaceFilesFollowSource()
 SelectingKeepsOnlyKnownIds()
 NewWaitSelectsOnlyAfterTheFirstSnapshot()
+try SubmittedChatKeepsTheAgentAndDropsThePrompt()
+try CodexAndClaudeHooksInstallMarkedCommands()
 LiveHooksFixWhenAsked()
 print("MochiCore checks passed")

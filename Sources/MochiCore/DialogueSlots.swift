@@ -59,7 +59,7 @@ public struct DialogueSlot: Codable, Equatable {
 }
 
 public struct DialogueSlotStore: Codable, Equatable {
-    public static let skins = ["cursor", "grok-bot", "mochi", "codex", "gpt"]
+    public static let skins = ["cursor", "grok-bot", "mochi", "codex", "claude", "gpt"]
 
     public var selected: String
     public var slots: [DialogueSlot]
@@ -74,6 +74,7 @@ public struct DialogueSlotStore: Codable, Equatable {
         case "grok-bot": return "grok-bot"
         case "mochi": return "mochi"
         case "codex": return "codex"
+        case "claude": return "claude"
         case "gpt": return "gpt"
         default: return "cursor"
         }

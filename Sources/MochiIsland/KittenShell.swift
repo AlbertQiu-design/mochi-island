@@ -23,6 +23,7 @@ final class KittenModel: ObservableObject {
     @Published var capsuleHeight: CGFloat = AppConfig.kittenSize
     @Published var capsuleWidth: CGFloat = AppConfig.kittenSize
     @Published var petScale: CGFloat = 1
+    @Published var opensUp = false
     @Published var selectionMoving = false
 }
 
@@ -91,13 +92,14 @@ struct KittenRoot: View {
                 kittenWell
             }
         }
-        .frame(width: width, height: height, alignment: .top)
+        .frame(width: width, height: height, alignment: model.opensUp ? .bottom : .top)
+        .clipped()
         .background {
             if revealed {
                 GlassEffectContainer {
                     Capsule()
                         .fill(.clear)
-                        .glassEffect(.regular, in: Capsule())
+                        .glassEffect(.regular.tint(nil), in: Capsule())
                 }
                 .allowsHitTesting(false)
             }
@@ -125,7 +127,16 @@ struct KittenRoot: View {
         .frame(width: side, height: side)
     }
 
+    @ViewBuilder
     private var menu: some View {
+        if model.opensUp {
+            upwardMenu
+        } else {
+            downwardMenu
+        }
+    }
+
+    private var downwardMenu: some View {
         let s = model.petScale
         return VStack(spacing: 0) {
             Color.clear.frame(height: AppConfig.capsulePadY * s)
@@ -149,6 +160,34 @@ struct KittenRoot: View {
             symbol("gearshape", label: "Settings")
             Color.clear.frame(height: AppConfig.capsulePadY * s)
         }
+    }
+
+    /// The kitten stays at the bottom. Gear and agents sit above it.
+    private var upwardMenu: some View {
+        let s = model.petScale
+        return VStack(spacing: 0) {
+            Color.clear.frame(height: AppConfig.capsulePadY * s)
+            symbol("gearshape", label: "Settings")
+            Color.clear.frame(height: AppConfig.rowGap * s)
+            symbol("plus", label: "Add")
+            Color.clear.frame(height: model.rows.isEmpty ? 0 : AppConfig.rowGap * s)
+            VStack(spacing: AppConfig.rowGap * s) {
+                ForEach(Array(model.rows.reversed())) { row in
+                    agentRow(row)
+                }
+            }
+            .offset(y: model.scroll)
+            .frame(height: model.rows.isEmpty ? 0 : model.viewport, alignment: .bottom)
+            .clipped()
+            Color.clear.frame(height: AppConfig.dividerGap * s)
+            Capsule()
+                .fill(Color.primary.opacity(0.22))
+                .frame(width: AppConfig.dividerWidth * s, height: AppConfig.dividerHeight * s)
+            Color.clear.frame(height: AppConfig.dividerGap * s)
+            petRow
+            Color.clear.frame(height: AppConfig.capsulePadY * s)
+        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     /// Expanded kitten matches the agent icon and sits in the capsule padding.
@@ -191,23 +230,26 @@ struct KittenRoot: View {
     }
 
     /// Glass only while the highlight is traveling. At rest it is a flat fill, not a second glass layer.
+    /// A circle behind the icon. Liquid glass only while the highlight travels; at rest it is a flat fill.
     @ViewBuilder
     private var selectionPlate: some View {
-        let shape = RoundedRectangle(cornerRadius: AppConfig.selectedRadius * model.petScale, style: .continuous)
+        let diameter = (AppConfig.agentIcon + 8) * model.petScale
+        let shape = Circle()
         Group {
             if model.selectionMoving {
                 GlassEffectContainer {
                     shape
                         .fill(.clear)
-                        .glassEffect(.regular, in: shape)
+                        .glassEffect(.regular.tint(nil), in: shape)
                 }
             } else {
                 shape
-                    .fill(Color.primary.opacity(0.2))
+                    .fill(Color.primary.opacity(0.28))
             }
         }
         .matchedGeometryEffect(id: "agent-selection", in: selectionNS)
-        .frame(width: (AppConfig.agentIcon + 12) * model.petScale, height: (AppConfig.agentRow - 8) * model.petScale)
+        .frame(width: diameter, height: diameter)
+        .allowsHitTesting(false)
     }
 
     @ViewBuilder
@@ -256,11 +298,6 @@ final class KittenShell: NSObject {
     private weak var host: NSWindow?
     private var iconCache: [String: NSImage] = [:]
     private var springTimer: Timer?
-    private var springHeight: CGFloat = AppConfig.kittenSize
-    private var springWidth: CGFloat = AppConfig.kittenSize
-    private var springVelocity: CGFloat = 0
-    private var springWidthVelocity: CGFloat = 0
-    private var springTarget: NSRect?
     private var springAgentBlock: CGFloat = 0
     private var springAgentsTop: CGFloat = 0
     private var springTail: CGFloat = 0
@@ -268,8 +305,17 @@ final class KittenShell: NSObject {
     private var pinnedIDs: Set<String> = []
     private var trackingPointer = false
     private var scale: CGFloat = 1
+    private var renderedScale: CGFloat = 1
+    private var scaleVelocity: CGFloat = 0
+    private var openT: CGFloat = 0
+    private var openVelocity: CGFloat = 0
+    private var shownHeight: CGFloat = AppConfig.kittenSize
+    private var shownWidth: CGFloat = AppConfig.kittenSize
+    private var heightVelocity: CGFloat = 0
+    private var widthVelocity: CGFloat = 0
+    private var rowSignature = ""
 
-    private var kittenSide: CGFloat { AppConfig.kittenSize * scale }
+    private var kittenSide: CGFloat { AppConfig.kittenSize * renderedScale }
 
     var onSettings: (() -> Void)?
     var onChoice: (([String: Any]) -> [String: Any])?
@@ -375,15 +421,13 @@ final class KittenShell: NSObject {
         dock = prefs.dock == "left" ? "left" : "right"
         let nextScale = ShellScale.factor(prefs.petScale)
         let scaleChanged = abs(nextScale - scale) > 0.001
-        if scaleChanged {
-            scale = nextScale
-            model.petScale = nextScale
-            stopSpring()
-        }
+        if scaleChanged { scale = nextScale }
         let token = "\(prefs.kittenPlaced)|\(prefs.kittenX)|\(prefs.kittenY)|\(dock)|\(scale)"
-        guard force || scaleChanged || token != positionToken || !positioned else { return }
+        let first = !positioned
+        guard force || scaleChanged || token != positionToken || first else { return }
         positionToken = token
         let boxes = canvas()
+        let settleSide = AppConfig.kittenSize * scale
         if prefs.kittenPlaced {
             anchor = ShellGeometry.anchor(x: prefs.kittenX, y: prefs.kittenY, screen: boxes.full)
         } else if dock == "left" {
@@ -391,9 +435,16 @@ final class KittenShell: NSObject {
         } else {
             anchor = ShellGeometry.defaultAnchor(screen: boxes.full, visible: boxes.visible, scale: scale)
         }
-        anchor = ShellGeometry.clampCenter(anchor, size: kittenSide, visible: boxes.visible)
+        anchor = ShellGeometry.clampCenter(anchor, size: settleSide, visible: boxes.visible)
         positioned = true
-        layout()
+        if first || !scaleChanged {
+            renderedScale = scale
+            openT = model.expanded ? 1 : 0
+            model.petScale = renderedScale
+            layout(animated: false)
+        } else {
+            layout(animated: true)
+        }
         if bubble.visible { repositionBubble() }
     }
 
@@ -464,7 +515,10 @@ final class KittenShell: NSObject {
             }
         }
         ensurePosition()
-        if !dragging { layout() }
+        let signature = model.rows.map(\.id).joined(separator: "|")
+        let rowsChanged = signature != rowSignature
+        rowSignature = signature
+        if !dragging { layout(animated: rowsChanged && positioned) }
         if bubble.visible { repositionBubble() }
     }
 
@@ -579,11 +633,12 @@ final class KittenShell: NSObject {
         mouse.onScroll = { [weak self] delta in
             guard let self, self.model.expanded else { return }
             let count = self.model.rows.count
-            let row = AppConfig.agentRow * self.scale
-            let gap = AppConfig.rowGap * self.scale
+            let row = AppConfig.agentRow * self.renderedScale
+            let gap = AppConfig.rowGap * self.renderedScale
             let block: CGFloat = count == 0 ? 0 : CGFloat(count) * row + CGFloat(max(0, count - 1)) * gap
             let maxScroll = max(0, block - self.model.viewport)
-            self.model.scroll = min(max(0, self.model.scroll - delta), maxScroll)
+            let deltaY = self.model.opensUp ? -delta : delta
+            self.model.scroll = min(max(0, self.model.scroll - deltaY), maxScroll)
         }
     }
 
@@ -600,6 +655,19 @@ final class KittenShell: NSObject {
                 "label": option.label
             ]
             let result = self.onChoice?(payload) ?? [:]
+            let permission = self.bubble.model.taskKind == "permission"
+                || option.id == "allow"
+                || option.id == "deny"
+            if permission {
+                if (result["ok"] as? Bool) == false {
+                    self.bubble.model.status = "Could not save"
+                    self.repositionBubble()
+                    return
+                }
+                self.closeBubble(retire: false)
+                self.onRead?(self.bubble.model.taskID)
+                return
+            }
             self.onRead?(self.bubble.model.taskID)
             self.bubble.model.options = []
             let failed = (result["ok"] as? Bool) == false
@@ -750,8 +818,7 @@ final class KittenShell: NSObject {
         let task = taskFields(id: focusID, fallback: row)
         bubble.model.kind = kind
         let focusStatus = string(taskCache[focusID]?["status"])
-        let focusTitle = string(taskCache[focusID]?["title"])
-        bubble.model.title = focusTitle.isEmpty ? row.title : focusTitle
+        bubble.model.title = SlotFace.displayName(for: row.source)
         bubble.model.appName = SlotFace.displayName(for: row.source)
         bubble.model.source = row.source
         bubble.model.icon = row.icon
@@ -814,47 +881,74 @@ final class KittenShell: NSObject {
     }
 
     private func layout(animated: Bool = false) {
-        let boxes = canvas()
-        let placed = ShellGeometry.placeCapsule(
-            anchorCenter: anchor,
-            expanded: model.expanded,
-            agentCount: model.rows.count,
-            visible: boxes.visible,
-            scale: scale
-        )
-        let count = model.rows.count
-        let block: CGFloat = count == 0 ? 0 : (CGFloat(count) * AppConfig.agentRow + CGFloat(count - 1) * AppConfig.rowGap) * scale
-        let tops = ShellGeometry.stack(agentCount: count, scale: scale)
-        let tail = ((count == 0 ? 0 : AppConfig.rowGap) + AppConfig.controlRow + AppConfig.rowGap + AppConfig.controlRow + AppConfig.capsulePadY) * scale
-        mouse.shadowPad = 0
-        springAgentBlock = block
-        springAgentsTop = tops.agents
-        springTail = tail
         if dragging {
             stopSpring()
-            applyFrame(placed.frame)
+            renderedScale = scale
+            openT = model.expanded ? 1 : 0
+            model.petScale = renderedScale
+            let pure = pureFrame()
+            shownHeight = pure.frame.height
+            shownWidth = pure.frame.width
+            applyFrame(pure.frame, upward: pure.upward && model.expanded)
             return
         }
-        if animated || springTimer != nil {
-            if springTimer == nil {
-                springHeight = panel.frame.height
-                springWidth = panel.frame.width
-                springVelocity = 0
-                springWidthVelocity = 0
-            }
-            springTarget = placed.frame
+        let openTarget: CGFloat = model.expanded ? 1 : 0
+        let moving = abs(renderedScale - scale) > 0.001 || abs(openT - openTarget) > 0.001
+        if animated || moving || springTimer != nil {
             startSpring()
             return
         }
-        applyFrame(placed.frame)
+        renderedScale = scale
+        openT = openTarget
+        model.petScale = renderedScale
+        let pure = pureFrame()
+        shownHeight = pure.frame.height
+        shownWidth = pure.frame.width
+        applyFrame(pure.frame, upward: pure.upward && model.expanded)
     }
 
-    private func applyFrame(_ frame: NSRect) {
-        let available = max(0, frame.height - springAgentsTop - springTail)
+    /// Frame for the current sprung scale and open amount. The kitten's edge stays fixed.
+    private func pureFrame() -> (frame: NSRect, upward: Bool) {
+        let boxes = canvas()
+        let closed = ShellGeometry.placeCapsule(
+            anchorCenter: anchor,
+            expanded: false,
+            agentCount: model.rows.count,
+            visible: boxes.visible,
+            scale: renderedScale
+        )
+        let opened = ShellGeometry.placeCapsule(
+            anchorCenter: anchor,
+            expanded: true,
+            agentCount: model.rows.count,
+            visible: boxes.visible,
+            scale: renderedScale
+        )
+        let t = min(1, max(0, openT))
+        let height = closed.frame.height + (opened.frame.height - closed.frame.height) * t
+        let width = closed.frame.width + (opened.frame.width - closed.frame.width) * t
+        let y = opened.upward ? closed.frame.minY : closed.frame.maxY - height
+        let x = closed.frame.midX - width / 2
+        return (NSRect(x: x, y: y, width: width, height: height), opened.upward)
+    }
+
+    private func applyFrame(_ frame: NSRect, upward: Bool) {
+        let chrome = ShellGeometry.agentChrome(agentCount: model.rows.count, scale: renderedScale, upward: upward)
+        let count = model.rows.count
+        let block: CGFloat = count == 0
+            ? 0
+            : (CGFloat(count) * AppConfig.agentRow + CGFloat(max(0, count - 1)) * AppConfig.rowGap) * renderedScale
+        springAgentBlock = block
+        springAgentsTop = chrome.agentsTop
+        springTail = chrome.tail
+        let available = max(0, frame.height - chrome.agentsTop - chrome.tail)
         model.capsuleHeight = frame.height
         model.capsuleWidth = frame.width
-        model.viewport = model.expanded ? min(springAgentBlock, available) : 0
-        model.scroll = min(model.scroll, max(0, springAgentBlock - model.viewport))
+        model.petScale = renderedScale
+        model.opensUp = upward && openT > 0.02
+        model.viewport = (model.expanded || model.opensUp) ? min(block, available) : 0
+        model.scroll = min(model.scroll, max(0, block - model.viewport))
+        mouse.shadowPad = 0
         mouse.testsCapsule = frame.height > kittenSide + 1
         panel.setFrame(frame, display: true)
         mouse.frame = NSRect(origin: .zero, size: frame.size)
@@ -874,43 +968,65 @@ final class KittenShell: NSObject {
     }
 
     private func stepSpring() {
-        guard let target = springTarget else {
-            stopSpring()
-            return
-        }
         let dt = 1.0 / 60.0
-        let response = 0.42
+        let omega = 2 * Double.pi / 0.42
         let damping = 0.78
-        let omega = 2 * Double.pi / response
-        let heightDelta = Double(target.height - springHeight)
-        let widthDelta = Double(target.width - springWidth)
-        let heightAccel = omega * omega * heightDelta - 2 * damping * omega * Double(springVelocity)
-        let widthAccel = omega * omega * widthDelta - 2 * damping * omega * Double(springWidthVelocity)
-        springVelocity += CGFloat(heightAccel * dt)
-        springWidthVelocity += CGFloat(widthAccel * dt)
-        springHeight += CGFloat(Double(springVelocity) * dt)
-        springWidth += CGFloat(Double(springWidthVelocity) * dt)
-        if springHeight < kittenSide { springHeight = kittenSide }
-        if springWidth < kittenSide { springWidth = kittenSide }
-        if abs(heightDelta) < 0.6, abs(springVelocity) < 14, abs(widthDelta) < 0.6, abs(springWidthVelocity) < 14 {
-            springHeight = target.height
-            springWidth = target.width
+        func follow(_ value: CGFloat, velocity: inout CGFloat, target: CGFloat) -> CGFloat {
+            let delta = Double(target - value)
+            let accel = omega * omega * delta - 2 * damping * omega * Double(velocity)
+            velocity += CGFloat(accel * dt)
+            return value + CGFloat(Double(velocity) * dt)
+        }
+        renderedScale = follow(renderedScale, velocity: &scaleVelocity, target: scale)
+        let openTarget: CGFloat = model.expanded ? 1 : 0
+        openT = min(1.15, max(-0.05, follow(openT, velocity: &openVelocity, target: openTarget)))
+        let pure = pureFrame()
+        let drivers = abs(renderedScale - scale) > 0.012
+            || abs(openT - openTarget) > 0.012
+            || abs(scaleVelocity) > 6
+            || abs(openVelocity) > 0.35
+        if drivers {
+            shownHeight = pure.frame.height
+            shownWidth = pure.frame.width
+            heightVelocity = 0
+            widthVelocity = 0
+        } else {
+            shownHeight = follow(shownHeight, velocity: &heightVelocity, target: pure.frame.height)
+            shownWidth = follow(shownWidth, velocity: &widthVelocity, target: pure.frame.width)
+        }
+        let y: CGFloat = (pure.upward && openT > 0.001) ? pure.frame.minY : pure.frame.maxY - shownHeight
+        let frame = NSRect(
+            x: pure.frame.midX - shownWidth / 2,
+            y: y,
+            width: max(shownWidth, 1),
+            height: max(shownHeight, 1)
+        )
+        applyFrame(frame, upward: pure.upward)
+        let settled = abs(renderedScale - scale) < 0.01
+            && abs(scaleVelocity) < 0.04
+            && abs(openT - openTarget) < 0.01
+            && abs(openVelocity) < 0.05
+            && abs(shownHeight - pure.frame.height) < 0.6
+            && abs(heightVelocity) < 8
+            && abs(shownWidth - pure.frame.width) < 0.6
+            && abs(widthVelocity) < 8
+        if settled {
+            renderedScale = scale
+            openT = openTarget
+            scaleVelocity = 0
+            openVelocity = 0
+            let final = pureFrame()
+            shownHeight = final.frame.height
+            shownWidth = final.frame.width
+            applyFrame(final.frame, upward: final.upward && model.expanded)
             stopSpring()
         }
-        let frame = NSRect(
-            x: target.midX - springWidth / 2,
-            y: target.maxY - springHeight,
-            width: springWidth,
-            height: springHeight
-        )
-        applyFrame(frame)
+        if bubble.visible { repositionBubble() }
     }
 
     private func stopSpring() {
         springTimer?.invalidate()
         springTimer = nil
-        springVelocity = 0
-        springWidthVelocity = 0
     }
 
     private func ensurePosition() {
@@ -940,11 +1056,24 @@ final class KittenShell: NSObject {
         let fromTop = mouse.bounds.height - local.y - pad
         guard fromTop >= 0 else { return nil }
         if !model.expanded { return .kitten }
-        let tops = ShellGeometry.stack(agentCount: model.rows.count, scale: scale)
+        let gap = AppConfig.rowGap * renderedScale
+        let row = AppConfig.agentRow * renderedScale
+        let control = AppConfig.controlRow * renderedScale
+        if model.opensUp {
+            let inset = AppConfig.capsulePadY * renderedScale
+            if fromTop >= inset && fromTop < inset + control { return .gear }
+            let plusTop = inset + control + gap
+            if fromTop >= plusTop && fromTop < plusTop + control { return .plus }
+            let agentsTop = plusTop + control + (model.rows.isEmpty ? 0 : gap)
+            if !model.rows.isEmpty, let index = upwardAgentIndex(fromTop: fromTop, agentsTop: agentsTop, row: row, gap: gap) {
+                return .agent(index)
+            }
+            let kittenTop = agentsTop + (model.rows.isEmpty ? 0 : model.viewport) + AppConfig.dividerGap * renderedScale * 2 + AppConfig.dividerHeight * renderedScale
+            if fromTop >= kittenTop { return .kitten }
+            return nil
+        }
+        let tops = ShellGeometry.stack(agentCount: model.rows.count, scale: renderedScale)
         if fromTop < tops.agents { return .kitten }
-        let gap = AppConfig.rowGap * scale
-        let row = AppConfig.agentRow * scale
-        let control = AppConfig.controlRow * scale
         let plusTop = tops.agents + (model.rows.isEmpty ? 0 : model.viewport + gap)
         if !model.rows.isEmpty && fromTop < plusTop - gap {
             let contentY = fromTop - tops.agents + model.scroll
@@ -960,12 +1089,38 @@ final class KittenShell: NSObject {
         return nil
     }
 
+    private func upwardAgentIndex(fromTop: CGFloat, agentsTop: CGFloat, row: CGFloat, gap: CGFloat) -> Int? {
+        let local = fromTop - agentsTop
+        guard local >= 0, local <= model.viewport else { return nil }
+        let count = model.rows.count
+        let stride = row + gap
+        let block = springAgentBlock
+        let contentTop = model.viewport - block + model.scroll
+        let contentY = local - contentTop
+        guard contentY >= 0 else { return nil }
+        let visual = Int(contentY / stride)
+        let within = contentY - CGFloat(visual) * stride
+        let index = count - 1 - visual
+        guard index >= 0, index < count, within <= row else { return nil }
+        return index
+    }
+
     private func iconFrame(_ index: Int) -> CGRect {
-        let tops = ShellGeometry.stack(agentCount: model.rows.count, scale: scale)
-        let row = AppConfig.agentRow * scale
-        let icon = AppConfig.agentIcon * scale
-        let contentY = CGFloat(index) * (row + AppConfig.rowGap * scale) - model.scroll
-        let fromTop = tops.agents + contentY + (row - icon) / 2
+        let row = AppConfig.agentRow * renderedScale
+        let icon = AppConfig.agentIcon * renderedScale
+        let gap = AppConfig.rowGap * renderedScale
+        let fromTop: CGFloat
+        if model.opensUp {
+            let count = model.rows.count
+            let stride = row + gap
+            let contentTop = model.viewport - springAgentBlock + model.scroll
+            let visual = CGFloat(count - 1 - index)
+            fromTop = springAgentsTop + contentTop + visual * stride + (row - icon) / 2
+        } else {
+            let tops = ShellGeometry.stack(agentCount: model.rows.count, scale: renderedScale)
+            let contentY = CGFloat(index) * (row + gap) - model.scroll
+            fromTop = tops.agents + contentY + (row - icon) / 2
+        }
         let capsule = hitFrame
         let y = capsule.maxY - fromTop - icon
         let x = capsule.midX - icon / 2
@@ -973,10 +1128,15 @@ final class KittenShell: NSObject {
     }
 
     private func plusFrame() -> CGRect {
-        let tops = ShellGeometry.stack(agentCount: model.rows.count, scale: scale)
-        let control = AppConfig.controlRow * scale
-        let plusTop = tops.agents + (model.rows.isEmpty ? 0 : model.viewport + AppConfig.rowGap * scale)
+        let control = AppConfig.controlRow * renderedScale
         let capsule = hitFrame
+        let plusTop: CGFloat
+        if model.opensUp {
+            plusTop = AppConfig.capsulePadY * renderedScale + control + AppConfig.rowGap * renderedScale
+        } else {
+            let tops = ShellGeometry.stack(agentCount: model.rows.count, scale: renderedScale)
+            plusTop = tops.agents + (model.rows.isEmpty ? 0 : model.viewport + AppConfig.rowGap * renderedScale)
+        }
         let y = capsule.maxY - plusTop - control
         return CGRect(x: capsule.minX, y: y, width: capsule.width, height: control)
     }
@@ -999,13 +1159,7 @@ final class KittenShell: NSObject {
     private func taskFields(id: String, fallback: KittenRow) -> TaskFields {
         var fields = TaskFields()
         guard let task = taskCache[id] else { return fields }
-        let prompt = string(task["prompt"]).trimmingCharacters(in: .whitespacesAndNewlines)
-        let detail = string(task["detail"]).trimmingCharacters(in: .whitespacesAndNewlines)
-        if !prompt.isEmpty {
-            fields.summary = prompt
-        } else if !detail.isEmpty, detail != fallback.title {
-            fields.summary = detail
-        }
+        fields.summary = ""
         fields.requestID = string(task["request_id"])
         fields.questionID = string(task["question_id"])
         fields.kind = string(task["kind"])
