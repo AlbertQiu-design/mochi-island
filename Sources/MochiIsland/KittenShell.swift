@@ -461,6 +461,7 @@ final class KittenShell: NSObject {
             }
         }
         let previousSource = model.rows.first { $0.id == model.selected }?.source
+        let previousIDs = Set(model.rows.map(\.id))
         var candidates: [AgentIconCandidate] = slots.compactMap { raw in
             let id = string(raw["id"])
             guard !id.isEmpty else { return nil }
@@ -513,7 +514,7 @@ final class KittenShell: NSObject {
                 updated: number(task["updated"])
             ))
         }
-        model.rows = AgentIconList.rows(candidates, holding: pinnedIDs).map { row in
+        let nextRows = AgentIconList.rows(candidates, holding: pinnedIDs).map { row in
             KittenRow(
                 id: row.id,
                 source: row.source,
@@ -524,6 +525,13 @@ final class KittenShell: NSObject {
                 memberIDs: row.memberIDs,
                 icon: cachedIcon(row.source)
             )
+        }
+        let reveal = positioned && nextRows.contains { row in
+            (row.status == "running" || row.status == "wait") && !previousIDs.contains(row.id)
+        }
+        model.rows = nextRows
+        if reveal {
+            model.expanded = true
         }
         if !model.selected.isEmpty, !model.rows.contains(where: { $0.id == model.selected }) {
             if (bubble.visible || !pinnedIDs.isEmpty),

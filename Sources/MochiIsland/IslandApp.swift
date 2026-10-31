@@ -111,6 +111,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     private let taskWatch = TaskFileWatch(
         fileURL: AppConfig.cursorDirectory.appendingPathComponent("mochi-island-tasks.json")
     )
+    private var taskPoll: Timer?
     private var taskStamp = ""
     private var reloadTries = 0
     private var glassPlates: [GlassPlate] = []
@@ -136,6 +137,13 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
                 self?.deliverTasksIfChanged()
             }
         }
+        let poll = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.deliverTasksIfChanged()
+            }
+        }
+        taskPoll = poll
+        RunLoop.main.add(poll, forMode: .common)
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(screenChanged),
@@ -202,10 +210,12 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
             syncGlass(body["rects"])
         case "getState":
             reply(requestID, session.statePayload())
+            deliverTasksIfChanged()
         case "play":
             reply(requestID, session.play())
         case "getTasks":
             reply(requestID, session.tasksPayload())
+            deliverTasksIfChanged()
         case "cursorLink":
             reply(requestID, session.linkPayload(
                 agent: body["agent"] as? String ?? "cursor",
