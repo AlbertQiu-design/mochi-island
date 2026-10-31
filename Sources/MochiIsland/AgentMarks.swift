@@ -145,6 +145,9 @@ struct AgentMark: View {
                 slash.move(to: CGPoint(x: 10, y: 8))
                 slash.addLine(to: CGPoint(x: 18, y: 20))
                 context.stroke(slash, with: .color(.white), style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+            case "gemini":
+                context.fill(Path(ellipseIn: CGRect(x: 1, y: 1, width: 26, height: 26)), with: .color(Color(red: 66 / 255, green: 133 / 255, blue: 244 / 255)))
+                context.fill(Path(ellipseIn: CGRect(x: 8, y: 8, width: 12, height: 12)), with: .color(.white))
             case "claude":
                 context.fill(Path(ellipseIn: CGRect(x: 1, y: 1, width: 26, height: 26)), with: .color(Color(red: 204 / 255, green: 122 / 255, blue: 92 / 255)))
                 var mark = Path()

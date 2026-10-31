@@ -657,32 +657,32 @@ func PickerFlagsPersistAcrossPrefs() throws {
     check(hidden.pickerCodex)
     check(hidden.pickerGrok)
     check(hidden.pickerGPT == false)
-    check(hidden.pickerSources == ["codex", "claude", "grok-bot"])
+    check(hidden.pickerSources == ["codex", "claude", "gemini", "grok-bot"])
     check(hidden.dictionary["picker_cursor"] as? Bool == false)
     check(hidden.dictionary["picker_codex"] as? Bool == true)
     check(hidden.dictionary["picker_grok"] as? Bool == true)
     check(hidden.dictionary["picker_gpt"] as? Bool == false)
     let again = IslandPrefs.parse(hidden.dictionary, base: IslandPrefs())
-    check(again.pickerSources == ["codex", "claude", "grok-bot"])
+    check(again.pickerSources == ["codex", "claude", "gemini", "grok-bot"])
     let data = try JSONEncoder().encode(hidden)
     let text = String(data: data, encoding: .utf8) ?? ""
     check(text.contains("picker_cursor"))
     check(text.contains("picker_gpt"))
     let decoded = try JSONDecoder().decode(IslandPrefs.self, from: data)
-    check(decoded.pickerSources == ["codex", "claude", "grok-bot"])
+    check(decoded.pickerSources == ["codex", "claude", "gemini", "grok-bot"])
     let legacy = try JSONDecoder().decode(IslandPrefs.self, from: Data("{\"sound\":\"pop\"}".utf8))
     check(legacy.sound == "pop")
     check(legacy.pickerSources == IslandPrefs.pickerOrder)
     let kept = IslandPrefs.parse(["pet_scale": 1.5], base: hidden)
     check(kept.petScale == 1.5)
-    check(kept.pickerSources == ["codex", "claude", "grok-bot"])
+    check(kept.pickerSources == ["codex", "claude", "gemini", "grok-bot"])
     let numbers = IslandPrefs.parse([
         "picker_cursor": 0,
         "picker_codex": 1,
         "picker_grok": 0,
         "picker_gpt": 1
     ])
-    check(numbers.pickerSources == ["codex", "claude", "gpt"])
+    check(numbers.pickerSources == ["codex", "claude", "gemini", "gpt"])
 }
 
 func EmptyFileHasNoSeeds() throws {
@@ -1085,7 +1085,7 @@ func PassiveHooksReportTheShortlist() throws {
     check(blank.deletingLastPathComponent().lastPathComponent == ".copilot")
     check(PassiveHooks.grokDirectory(home: home).path == home.appendingPathComponent(".grok/hooks").path)
     check(PassiveHooks.openCodePluginURL(home: home).path == home.appendingPathComponent(".config/opencode/plugins/mochi-island.js").path)
-    check(IslandPrefs.pickerOrder == ["cursor", "codex", "claude", "grok-bot", "gpt"])
+    check(IslandPrefs.pickerOrder == ["cursor", "codex", "claude", "gemini", "grok-bot", "gpt"])
     check(IslandPrefs().pickerClaude)
     check(IslandPrefs.pickerOrder.contains("copilot") == false)
     check(IslandPrefs.pickerOrder.contains("opencode") == false)
@@ -1435,6 +1435,155 @@ func PassiveHooksReportTheShortlist() throws {
     check(TaskReader.load(tasksURL: tasksURL, now: 10).isEmpty)
 }
 
+func GeminiHookMapsTheShortlist() throws {
+    let running = [
+        "SessionStart", "BeforeAgent", "BeforeModel", "AfterModel",
+        "BeforeToolSelection", "BeforeTool", "AfterTool"
+    ]
+    for name in running {
+        let item = HookEvents.interpret(sourceFlag: "gemini", payload: [
+            "hook_event_name": name,
+            "session_id": "gem-1",
+            "prompt": "SECRET",
+            "tool_input": ["command": "SECRET"],
+            "error": "tool failed",
+            "transcript_path": "/tmp/SECRET/transcript.json"
+        ])
+        check(item?.source == "gemini")
+        check(item?.status == "running")
+        check(item?.waitsForPermission == false)
+        check(item?.id == "gem-1")
+        var tasks: [String: Any] = [:]
+        HookEvents.merge(item!, into: &tasks, now: 3)
+        let record = tasks["gem-1"] as? [String: Any] ?? [:]
+        check(record["prompt"] == nil)
+        check(record["tool_input"] == nil)
+        check(record["transcript_path"] == nil)
+        check(record["error"] == nil)
+        check(record["status"] as? String == "running")
+        let blob = record.values.compactMap { $0 as? String }.joined(separator: " ")
+        check(blob.contains("SECRET") == false)
+    }
+    let pathOnly = HookEvents.interpret(sourceFlag: "gemini", payload: [
+        "hook_event_name": "SessionStart",
+        "transcript_path": "/tmp/SECRET/transcript.json",
+        "prompt": "SECRET prompt"
+    ])
+    check(pathOnly?.id == "gemini-session")
+    check(pathOnly?.status == "running")
+    let permission = HookEvents.interpret(sourceFlag: "gemini", payload: [
+        "hook_event_name": "Notification",
+        "notification_type": "ToolPermission",
+        "session_id": "gem-1",
+        "message": "SECRET"
+    ])
+    check(permission?.status == "wait")
+    check(permission?.waitsForPermission == false)
+    check(permission?.options.isEmpty == true)
+    check(permission?.permissionStyle.isEmpty == true)
+    check(HookEvents.interpret(sourceFlag: "gemini", payload: [
+        "hook_event_name": "Notification",
+        "type": "Info",
+        "session_id": "gem-1",
+        "message": "SECRET"
+    ]) == nil)
+    var tasks: [String: Any] = [:]
+    let finished = HookEvents.interpret(sourceFlag: "gemini", payload: [
+        "hook_event_name": "AfterAgent",
+        "session_id": "gem-1",
+        "error": "model failed",
+        "prompt": "SECRET"
+    ])
+    check(finished?.status == "done")
+    HookEvents.merge(finished!, into: &tasks, now: 4)
+    check((tasks["gem-1"] as? [String: Any])?["status"] as? String == "done")
+    check((tasks["gem-1"] as? [String: Any])?["error"] == nil)
+    let ended = HookEvents.interpret(sourceFlag: "gemini", payload: [
+        "hook_event_name": "SessionEnd",
+        "session_id": "gem-1",
+        "transcript_path": "/tmp/SECRET/transcript.json"
+    ])
+    check(ended?.status == "closed")
+    HookEvents.merge(ended!, into: &tasks, now: 5)
+    check(tasks["gem-1"] == nil)
+    check(HookInstaller.geminiEvents.contains { $0.lowercased().contains("fail") } == false)
+    check(HookEvents.interpret(sourceFlag: "gemini", payload: [
+        "hook_event_name": "StopFailure",
+        "session_id": "gem-1"
+    ]) == nil)
+    let launch = AgentLaunch.plan(source: "gemini cli") { _ in false }
+    check(launch.appPath == nil)
+    check(launch.url == "https://geminicli.com")
+    check(SlotFace.agentMark(for: "gemini") == "agent-gemini")
+    check(IslandPrefs().pickerSources.contains("gemini"))
+    let rows = AgentIconList.rows([
+        AgentIconCandidate(id: "g", source: "gemini", title: "Gemini", status: "running", read: false, updated: 1)
+    ])
+    check(rows.map(\.source) == ["gemini"])
+
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-gemini-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let binary = directory.appendingPathComponent("MochiHookCLI")
+    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: binary)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary.path)
+    let settings = directory.appendingPathComponent("settings.json")
+    let blocked = HookInstaller.installGemini(settingsURL: settings, binaryURL: binary, privacyAccepted: false)
+    check(blocked.needsPrivacy)
+    check(blocked.connected == false)
+    check(FileManager.default.fileExists(atPath: settings.path) == false)
+    let missing = HookInstaller.installGemini(settingsURL: settings, binaryURL: directory.appendingPathComponent("missing"), privacyAccepted: true)
+    check(missing.error == "hook program missing")
+    let previous: [String: Any] = [
+        "theme": "dark",
+        "hooks": [
+            "BeforeTool": [[
+                "hooks": [[
+                    "type": "command",
+                    "command": "/bin/echo keep"
+                ]]
+            ]]
+        ]
+    ]
+    try JSONSerialization.data(withJSONObject: previous).write(to: settings)
+    let installed = HookInstaller.installGemini(settingsURL: settings, binaryURL: binary, privacyAccepted: true)
+    check(installed.connected)
+    let backup = try String(contentsOf: settings.appendingPathExtension("mochi-island.bak"), encoding: .utf8)
+    check(backup.contains("keep"))
+    check(backup.contains("dark"))
+    let saved = try JSONSerialization.jsonObject(with: Data(contentsOf: settings)) as? [String: Any]
+    check(saved?["theme"] as? String == "dark")
+    let hooks = saved?["hooks"] as? [String: Any]
+    check(Set(hooks?.keys.map { String($0) } ?? []) == Set(HookInstaller.geminiEvents))
+    for name in HookInstaller.geminiEvents {
+        let groups = hooks?[name] as? [[String: Any]] ?? []
+        let commands = groups.flatMap { $0["hooks"] as? [[String: Any]] ?? [] }
+        check(commands.contains { entry in
+            let command = entry["command"] as? String ?? ""
+            return command.contains(binary.path)
+                && command.contains("--source gemini")
+                && entry[AppConfig.hookMarker] as? Int == AppConfig.hookVersion
+                && entry["timeout"] as? Int == 10000
+        })
+    }
+    let before = (hooks?["BeforeTool"] as? [[String: Any]]) ?? []
+    let beforeCommands = before.flatMap { $0["hooks"] as? [[String: Any]] ?? [] }
+    check(beforeCommands.contains { ($0["command"] as? String) == "/bin/echo keep" })
+    let other = directory.appendingPathComponent("OtherCLI")
+    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: other)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: other.path)
+    check(HookInstaller.geminiStatus(settingsURL: settings, binaryURL: other).connected == false)
+    let names = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).map(\.lastPathComponent)
+    check(names.contains { $0.contains(".tmp") } == false)
+    _ = HookInstaller.removeNested(fileURL: settings, binaryURL: binary)
+    check(HookInstaller.geminiStatus(settingsURL: settings, binaryURL: binary).connected == false)
+    let removed = try JSONSerialization.jsonObject(with: Data(contentsOf: settings)) as? [String: Any]
+    check(removed?["theme"] as? String == "dark")
+    let keptHooks = (removed?["hooks"] as? [String: Any])?["BeforeTool"] as? [[String: Any]] ?? []
+    let keptCommands = keptHooks.flatMap { $0["hooks"] as? [[String: Any]] ?? [] }
+    check(keptCommands.contains { ($0["command"] as? String) == "/bin/echo keep" })
+    check(keptCommands.contains { $0[AppConfig.hookMarker] != nil } == false)
+}
+
 func LiveHooksFixWhenAsked() {
         guard let binary = ProcessInfo.processInfo.environment["MOCHI_FIX_LIVE_HOOKS"], !binary.isEmpty else { return }
         let cursor = AppConfig.cursorDirectory
@@ -1483,5 +1632,6 @@ try SubmittedChatKeepsTheAgentAndDropsThePrompt()
 try CodexAndClaudeHooksInstallMarkedCommands()
 try HookRetargetPointsAtTheOpenApp()
 try PassiveHooksReportTheShortlist()
+try GeminiHookMapsTheShortlist()
 LiveHooksFixWhenAsked()
 print("MochiCore checks passed")

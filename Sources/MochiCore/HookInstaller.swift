@@ -216,6 +216,70 @@ public enum HookInstaller {
         return HookInstallResult(connected: true, hook: binaryURL.path)
     }
 
+    public static let geminiEvents = [
+        "SessionStart",
+        "BeforeAgent",
+        "BeforeModel",
+        "AfterModel",
+        "BeforeToolSelection",
+        "BeforeTool",
+        "AfterTool",
+        "Notification",
+        "AfterAgent",
+        "SessionEnd"
+    ]
+
+    public static func installGemini(settingsURL: URL, binaryURL: URL, privacyAccepted: Bool) -> HookInstallResult {
+        guard privacyAccepted else {
+            return HookInstallResult(connected: false, hook: binaryURL.path, needsPrivacy: true)
+        }
+        guard FileManager.default.isExecutableFile(atPath: binaryURL.path) else {
+            return HookInstallResult(connected: false, hook: binaryURL.path, error: "hook program missing")
+        }
+        if FileManager.default.fileExists(atPath: settingsURL.path) {
+            let data = (try? Data(contentsOf: settingsURL)) ?? Data()
+            if !data.isEmpty, (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) == nil {
+                return HookInstallResult(connected: false, hook: binaryURL.path, error: "could not read hooks")
+            }
+        }
+        backup(settingsURL)
+        var root = read(settingsURL)
+        var hooks = root["hooks"] as? [String: Any] ?? [:]
+        let command = shellCommand(binaryURL, source: "gemini")
+        let entry: [String: Any] = [
+            "type": "command",
+            "command": command,
+            "timeout": 10000,
+            AppConfig.hookMarker: AppConfig.hookVersion
+        ]
+        for name in geminiEvents {
+            var groups = (hooks[name] as? [[String: Any]] ?? []).compactMap { group -> [String: Any]? in
+                var copy = group
+                if let inner = copy["hooks"] as? [[String: Any]] {
+                    let kept = inner.filter { !isOurs($0) }
+                    if kept.isEmpty { return nil }
+                    copy["hooks"] = kept
+                    return copy
+                }
+                return isOurs(copy) ? nil : copy
+            }
+            groups.insert(["hooks": [entry]], at: 0)
+            hooks[name] = groups
+        }
+        root["hooks"] = hooks
+        do {
+            try AtomicFile.writeJSON(root, to: settingsURL)
+        } catch {
+            return HookInstallResult(connected: false, hook: binaryURL.path, error: "could not write hooks")
+        }
+        let connected = geminiInstalled(fileURL: settingsURL, binaryURL: binaryURL)
+        return HookInstallResult(connected: connected, hook: binaryURL.path, error: connected ? nil : "hook program missing")
+    }
+
+    public static func geminiStatus(settingsURL: URL, binaryURL: URL) -> HookInstallResult {
+        HookInstallResult(connected: geminiInstalled(fileURL: settingsURL, binaryURL: binaryURL), hook: binaryURL.path)
+    }
+
     public static func installClaude(settingsURL: URL, binaryURL: URL, privacyAccepted: Bool) -> HookInstallResult {
         guard privacyAccepted else {
             return HookInstallResult(connected: false, hook: binaryURL.path, needsPrivacy: true)
@@ -303,6 +367,23 @@ public enum HookInstaller {
         }
         let connected = nestedInstalled(fileURL: fileURL, binaryURL: binaryURL)
         return HookInstallResult(connected: connected, hook: binaryURL.path, error: connected ? nil : "hook program missing")
+    }
+
+    private static func geminiInstalled(fileURL: URL, binaryURL: URL) -> Bool {
+        guard FileManager.default.isExecutableFile(atPath: binaryURL.path) else { return false }
+        let hooks = read(fileURL)["hooks"] as? [String: Any] ?? [:]
+        let needle = "--source gemini"
+        for name in geminiEvents {
+            for group in hooks[name] as? [[String: Any]] ?? [] {
+                for entry in group["hooks"] as? [[String: Any]] ?? [] where isOurs(entry) {
+                    let command = entry["command"] as? String ?? ""
+                    if command.contains(binaryURL.path), command.contains(needle) {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
     }
 
     private static func nestedInstalled(fileURL: URL, binaryURL: URL) -> Bool {

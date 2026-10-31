@@ -28,6 +28,8 @@ public enum AgentLaunch {
             return "copilot"
         case "opencode", "open-code", "open code":
             return "opencode"
+        case "gemini", "gemini-cli", "gemini cli":
+            return "gemini"
         case "mochi", "cat", "小猫":
             return "mochi"
         default:
@@ -72,6 +74,10 @@ public enum AgentLaunch {
             names = []
             fallback = "https://opencode.ai"
             missing = "OpenCode stays in the terminal."
+        case "gemini":
+            names = []
+            fallback = "https://geminicli.com"
+            missing = "Gemini CLI stays in the terminal."
         default:
             names = ["Cursor"]
             fallback = "https://cursor.com"

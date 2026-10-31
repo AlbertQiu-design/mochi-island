@@ -23,18 +23,20 @@ public struct IslandPrefs: Codable, Equatable {
     public var pickerCursor: Bool
     public var pickerCodex: Bool
     public var pickerClaude: Bool
+    public var pickerGemini: Bool
     public var pickerGrok: Bool
     public var pickerGPT: Bool
 
     public static let soundIDs = ["boop", "chirp", "mew", "pop", "twinkle"]
     public static let docks = ["left", "right"]
-    public static let pickerOrder = ["cursor", "codex", "claude", "grok-bot", "gpt"]
+    public static let pickerOrder = ["cursor", "codex", "claude", "gemini", "grok-bot", "gpt"]
 
     public var pickerSources: [String] {
         var sources: [String] = []
         if pickerCursor { sources.append("cursor") }
         if pickerCodex { sources.append("codex") }
         if pickerClaude { sources.append("claude") }
+        if pickerGemini { sources.append("gemini") }
         if pickerGrok { sources.append("grok-bot") }
         if pickerGPT { sources.append("gpt") }
         return sources
@@ -63,6 +65,7 @@ public struct IslandPrefs: Codable, Equatable {
         pickerCursor: Bool = true,
         pickerCodex: Bool = true,
         pickerClaude: Bool = true,
+        pickerGemini: Bool = true,
         pickerGrok: Bool = true,
         pickerGPT: Bool = true
     ) {
@@ -88,6 +91,7 @@ public struct IslandPrefs: Codable, Equatable {
         self.pickerCursor = pickerCursor
         self.pickerCodex = pickerCodex
         self.pickerClaude = pickerClaude
+        self.pickerGemini = pickerGemini
         self.pickerGrok = pickerGrok
         self.pickerGPT = pickerGPT
         if kittenPlaced {
@@ -117,6 +121,7 @@ public struct IslandPrefs: Codable, Equatable {
             "picker_cursor": pickerCursor,
             "picker_codex": pickerCodex,
             "picker_claude": pickerClaude,
+            "picker_gemini": pickerGemini,
             "picker_grok": pickerGrok,
             "picker_gpt": pickerGPT
         ]
@@ -131,6 +136,7 @@ public struct IslandPrefs: Codable, Equatable {
         case pickerCursor = "picker_cursor"
         case pickerCodex = "picker_codex"
         case pickerClaude = "picker_claude"
+        case pickerGemini = "picker_gemini"
         case pickerGrok = "picker_grok"
         case pickerGPT = "picker_gpt"
     }
@@ -160,6 +166,7 @@ public struct IslandPrefs: Codable, Equatable {
             pickerCursor: try container.decodeIfPresent(Bool.self, forKey: .pickerCursor) ?? true,
             pickerCodex: try container.decodeIfPresent(Bool.self, forKey: .pickerCodex) ?? true,
             pickerClaude: try container.decodeIfPresent(Bool.self, forKey: .pickerClaude) ?? true,
+            pickerGemini: try container.decodeIfPresent(Bool.self, forKey: .pickerGemini) ?? true,
             pickerGrok: try container.decodeIfPresent(Bool.self, forKey: .pickerGrok) ?? true,
             pickerGPT: try container.decodeIfPresent(Bool.self, forKey: .pickerGPT) ?? true
         )
@@ -190,6 +197,7 @@ public struct IslandPrefs: Codable, Equatable {
         try container.encode(pickerCursor, forKey: .pickerCursor)
         try container.encode(pickerCodex, forKey: .pickerCodex)
         try container.encode(pickerClaude, forKey: .pickerClaude)
+        try container.encode(pickerGemini, forKey: .pickerGemini)
         try container.encode(pickerGrok, forKey: .pickerGrok)
         try container.encode(pickerGPT, forKey: .pickerGPT)
     }
@@ -240,6 +248,7 @@ public struct IslandPrefs: Codable, Equatable {
         if let value = json["picker_cursor"] { next.pickerCursor = flag(value, fallback: base.pickerCursor) }
         if let value = json["picker_codex"] { next.pickerCodex = flag(value, fallback: base.pickerCodex) }
         if let value = json["picker_claude"] { next.pickerClaude = flag(value, fallback: base.pickerClaude) }
+        if let value = json["picker_gemini"] { next.pickerGemini = flag(value, fallback: base.pickerGemini) }
         if let value = json["picker_grok"] { next.pickerGrok = flag(value, fallback: base.pickerGrok) }
         if let value = json["picker_gpt"] { next.pickerGPT = flag(value, fallback: base.pickerGPT) }
         return next

@@ -11,6 +11,7 @@ public enum SlotFace {
         case "claude": return "claude"
         case "copilot": return "copilot"
         case "opencode": return "opencode"
+        case "gemini": return "gemini"
         case "gpt": return "gpt"
         default: return "cursor"
         }
@@ -37,6 +38,7 @@ public enum SlotFace {
         case "claude": return "Claude"
         case "copilot": return "Copilot"
         case "opencode": return "OpenCode"
+        case "gemini": return "Gemini"
         case "gpt": return "GPT"
         default: return "Cursor"
         }
@@ -49,6 +51,7 @@ public enum SlotFace {
         case "claude": return "agent-claude"
         case "copilot": return "agent-copilot"
         case "opencode": return "agent-opencode"
+        case "gemini": return "agent-gemini"
         case "grok-bot": return "agent-grok"
         case "gpt": return "agent-gpt"
         case "mochi": return "kitten-mark"
@@ -63,6 +66,7 @@ public enum SlotFace {
         case "claude": return "Claude"
         case "copilot": return "Copilot"
         case "opencode": return "OpenCode"
+        case "gemini": return "Gemini"
         case "gpt": return "GPT"
         default: return "Cursor"
         }

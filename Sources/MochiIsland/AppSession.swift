@@ -167,6 +167,12 @@ final class AppSession {
                 return PassiveHooks.remove(fileURL: grokHookURL, binaryURL: binary)
             }
             return PassiveHooks.installGrok(directory: grokHooksDirectory, binaryURL: binary, privacyAccepted: true)
+        case "gemini":
+            if action == "disconnect" {
+                _ = HookInstaller.removeNested(fileURL: geminiSettingsURL, binaryURL: binary)
+                return HookInstaller.geminiStatus(settingsURL: geminiSettingsURL, binaryURL: binary)
+            }
+            return HookInstaller.installGemini(settingsURL: geminiSettingsURL, binaryURL: binary, privacyAccepted: true)
         default:
             if action == "disconnect" {
                 return HookInstaller.remove(hooksURL: hooksURL, binaryURL: binary, tasksURL: tasksURL)
@@ -187,6 +193,7 @@ final class AppSession {
         let copilot = PassiveHooks.copilotStatus(directory: copilotHooksDirectory, binaryURL: binary)
         let opencode = PassiveHooks.openCodeStatus(pluginURL: openCodePluginURL, binaryURL: binary)
         let grok = PassiveHooks.grokStatus(directory: grokHooksDirectory, binaryURL: binary)
+        let gemini = HookInstaller.geminiStatus(settingsURL: geminiSettingsURL, binaryURL: binary)
         var payload = cursor.dictionary
         payload["agents"] = [
             "cursor": ["connected": cursor.connected],
@@ -194,7 +201,8 @@ final class AppSession {
             "claude": ["connected": claude.connected],
             "copilot": ["connected": copilot.connected],
             "opencode": ["connected": opencode.connected],
-            "grok": ["connected": grok.connected]
+            "grok": ["connected": grok.connected],
+            "gemini": ["connected": gemini.connected]
         ]
         return payload
     }
@@ -329,6 +337,10 @@ final class AppSession {
 
     private var claudeSettingsURL: URL {
         AppConfig.homeDirectory.appendingPathComponent(".claude/settings.json")
+    }
+
+    private var geminiSettingsURL: URL {
+        AppConfig.homeDirectory.appendingPathComponent(".gemini/settings.json")
     }
 
     private var copilotHooksDirectory: URL {

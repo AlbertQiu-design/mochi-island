@@ -156,7 +156,7 @@ public enum HookEvents {
         }
         let flagged = AgentLaunch.normalize(flag)
         switch flagged {
-        case "codex", "claude", "grok-bot", "copilot", "opencode":
+        case "codex", "claude", "grok-bot", "copilot", "opencode", "gemini":
             return flagged
         default:
             return "cursor"
@@ -189,6 +189,7 @@ public enum HookEvents {
         switch source {
         case "copilot": return copilotStatus(event, payload: payload)
         case "opencode": return opencodeStatus(event, payload: payload)
+        case "gemini": return geminiStatus(event, payload: payload)
         case "grok-bot":
             if let native = grokNative(event, payload: payload) {
                 return native
@@ -221,6 +222,24 @@ public enum HookEvents {
         case "agentStop", "Stop":
             return "done"
         case "sessionEnd", "SessionEnd":
+            return "closed"
+        default:
+            return ""
+        }
+    }
+
+    /// Gemini CLI events. A tool error stays running. There is no failure event.
+    private static func geminiStatus(_ event: String, payload: [String: Any]) -> String {
+        switch event {
+        case "SessionStart", "BeforeAgent", "BeforeModel", "AfterModel",
+             "BeforeToolSelection", "BeforeTool", "AfterTool":
+            return "running"
+        case "Notification":
+            let kind = token(payload, keys: ["notification_type", "notificationType", "type"])
+            return kind == "ToolPermission" ? "wait" : ""
+        case "AfterAgent":
+            return "done"
+        case "SessionEnd":
             return "closed"
         default:
             return ""
@@ -409,7 +428,7 @@ public enum HookEvents {
             let value = string(nested["id"])
             if !value.isEmpty { return bareID(value) }
         }
-        if let path = payload["transcript_path"] as? String, !path.isEmpty {
+        if source != "gemini", let path = payload["transcript_path"] as? String, !path.isEmpty {
             let stem = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
             if !stem.isEmpty { return bareID(stem) }
         }

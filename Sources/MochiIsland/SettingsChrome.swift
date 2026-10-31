@@ -223,6 +223,7 @@ final class SettingsModel: ObservableObject {
     @Published var copilotConnected = false
     @Published var opencodeConnected = false
     @Published var grokConnected = false
+    @Published var geminiConnected = false
     @Published var needsPrivacy = false
     @Published var scanTranscripts = false
     @Published var cursorStatus = "Not connected"
@@ -231,17 +232,20 @@ final class SettingsModel: ObservableObject {
     @Published var copilotStatus = "Not connected"
     @Published var opencodeStatus = "Not connected"
     @Published var grokStatus = "Not connected"
+    @Published var geminiStatus = "Not connected"
     @Published var cursorButton = "Connect Cursor"
     @Published var codexButton = "Connect Codex"
     @Published var claudeButton = "Connect Claude"
     @Published var copilotButton = "Connect Copilot"
     @Published var opencodeButton = "Connect OpenCode"
     @Published var grokButton = "Connect Grok"
+    @Published var geminiButton = "Connect Gemini"
     @Published var petScale = 1.0
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
     @Published var pickerCursor = true
     @Published var pickerCodex = true
     @Published var pickerClaude = true
+    @Published var pickerGemini = true
     @Published var pickerGrok = true
     @Published var pickerGPT = true
 
@@ -259,6 +263,7 @@ final class SettingsModel: ObservableObject {
         pickerCursor = prefs.pickerCursor
         pickerCodex = prefs.pickerCodex
         pickerClaude = prefs.pickerClaude
+        pickerGemini = prefs.pickerGemini
         pickerGrok = prefs.pickerGrok
         pickerGPT = prefs.pickerGPT
         PickerMenu.shared.apply(prefs)
@@ -276,6 +281,7 @@ final class SettingsModel: ObservableObject {
         copilotConnected = connectedFlag(agents["copilot"]) ?? false
         opencodeConnected = connectedFlag(agents["opencode"]) ?? false
         grokConnected = connectedFlag(agents["grok"]) ?? false
+        geminiConnected = connectedFlag(agents["gemini"]) ?? false
         needsPrivacy = link["needsPrivacy"] as? Bool ?? false
         cursorStatus = cursorConnected ? "Connected" : "Not connected"
         codexStatus = codexConnected ? "Connected" : "Not connected"
@@ -283,12 +289,14 @@ final class SettingsModel: ObservableObject {
         copilotStatus = copilotConnected ? "Connected" : "Not connected"
         opencodeStatus = opencodeConnected ? "Connected" : "Not connected"
         grokStatus = grokConnected ? "Connected" : "Not connected"
+        geminiStatus = geminiConnected ? "Connected" : "Not connected"
         cursorButton = needsPrivacy ? "Continue" : (cursorConnected ? "Disconnect" : "Connect Cursor")
         codexButton = codexConnected ? "Disconnect" : "Connect Codex"
         claudeButton = claudeConnected ? "Disconnect" : "Connect Claude"
         copilotButton = copilotConnected ? "Disconnect" : "Connect Copilot"
         opencodeButton = opencodeConnected ? "Disconnect" : "Connect OpenCode"
         grokButton = grokConnected ? "Disconnect" : "Connect Grok"
+        geminiButton = geminiConnected ? "Disconnect" : "Connect Gemini"
     }
 
     private func connectedFlag(_ row: [String: Any]?) -> Bool? {
@@ -310,6 +318,7 @@ final class SettingsModel: ObservableObject {
             pickerCursor: pickerCursor,
             pickerCodex: pickerCodex,
             pickerClaude: pickerClaude,
+            pickerGemini: pickerGemini,
             pickerGrok: pickerGrok,
             pickerGPT: pickerGPT
         )
@@ -319,6 +328,7 @@ final class SettingsModel: ObservableObject {
             "picker_cursor": pickerCursor,
             "picker_codex": pickerCodex,
             "picker_claude": pickerClaude,
+            "picker_gemini": pickerGemini,
             "picker_grok": pickerGrok,
             "picker_gpt": pickerGPT
         ])
@@ -363,6 +373,7 @@ final class SettingsModel: ObservableObject {
         case "copilot": connected = copilotConnected
         case "opencode": connected = opencodeConnected
         case "grok", "grok-bot": connected = grokConnected
+        case "gemini": connected = geminiConnected
         default: connected = cursorConnected
         }
         let action = connected ? "disconnect" : "connect"
@@ -587,6 +598,12 @@ struct SettingsRoot: View {
                     .foregroundStyle(.secondary)
                 Button(model.grokButton) { model.connect("grok") }
             }
+            Section("Gemini") {
+                LabeledContent("Status", value: model.geminiStatus)
+                Text("Connect writes Mochi's command hook in ~/.gemini/settings.json. Gemini keeps its own permission prompt.")
+                    .foregroundStyle(.secondary)
+                Button(model.geminiButton) { model.connect("gemini") }
+            }
             Section("Plus picker") {
                 Toggle("Cursor", isOn: $model.pickerCursor)
                     .onChange(of: model.pickerCursor) { _, _ in model.persist() }
@@ -594,6 +611,8 @@ struct SettingsRoot: View {
                     .onChange(of: model.pickerCodex) { _, _ in model.persist() }
                 Toggle("Claude", isOn: $model.pickerClaude)
                     .onChange(of: model.pickerClaude) { _, _ in model.persist() }
+                Toggle("Gemini", isOn: $model.pickerGemini)
+                    .onChange(of: model.pickerGemini) { _, _ in model.persist() }
                 Toggle("Grok", isOn: $model.pickerGrok)
                     .onChange(of: model.pickerGrok) { _, _ in model.persist() }
                 Toggle("GPT", isOn: $model.pickerGPT)

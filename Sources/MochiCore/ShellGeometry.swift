@@ -260,7 +260,7 @@ public struct AgentIconRow: Equatable {
 }
 
 public enum AgentIconList {
-    public static let order = ["cursor", "codex", "claude", "copilot", "opencode", "grok-bot", "gpt"]
+    public static let order = ["cursor", "codex", "claude", "gemini", "copilot", "opencode", "grok-bot", "gpt"]
 
     /// One row per agent. Running and waiting stay. A finished row stays until it has been opened
     /// and the bubble has closed. `holding` keeps the open finished row on screen through that close.
