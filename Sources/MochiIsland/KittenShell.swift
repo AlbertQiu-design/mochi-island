@@ -818,8 +818,11 @@ final class KittenShell: NSObject {
         let task = taskFields(id: focusID, fallback: row)
         bubble.model.kind = kind
         let focusStatus = string(taskCache[focusID]?["status"])
-        bubble.model.title = SlotFace.displayName(for: row.source)
-        bubble.model.appName = SlotFace.displayName(for: row.source)
+        let agent = SlotFace.displayName(for: row.source)
+        let subject = row.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        bubble.model.title = subject.isEmpty || subject == "New chat" ? agent : subject
+        bubble.model.appName = agent
+        bubble.model.updated = number(taskCache[focusID]?["updated"])
         bubble.model.source = row.source
         bubble.model.icon = row.icon
         bubble.model.status = statusLine(focusStatus.isEmpty ? row.status : focusStatus)
