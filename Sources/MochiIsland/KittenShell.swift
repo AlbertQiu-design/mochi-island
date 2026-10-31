@@ -655,10 +655,8 @@ final class KittenShell: NSObject {
                 "label": option.label
             ]
             let result = self.onChoice?(payload) ?? [:]
-            let permission = self.bubble.model.taskKind == "permission"
-                || option.id == "allow"
-                || option.id == "deny"
-            if permission {
+            let closes = ReplyWriter.closesBubble(kind: self.bubble.model.taskKind, optionID: option.id)
+            if closes {
                 if (result["ok"] as? Bool) == false {
                     self.bubble.model.status = "Could not save"
                     self.repositionBubble()
@@ -783,6 +781,7 @@ final class KittenShell: NSObject {
         bubble.model.title = "Open"
         bubble.model.appName = ""
         bubble.model.summary = ""
+        bubble.model.updated = 0
         bubble.model.status = ""
         bubble.model.options = []
         bubble.model.taskID = ""
@@ -819,8 +818,12 @@ final class KittenShell: NSObject {
         bubble.model.kind = kind
         let focusStatus = string(taskCache[focusID]?["status"])
         let agent = SlotFace.displayName(for: row.source)
-        let subject = row.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        bubble.model.title = subject.isEmpty || subject == "New chat" ? agent : subject
+        let prompt = string(taskCache[focusID]?["prompt"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        var subject = row.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if subject == "New chat" || (!prompt.isEmpty && subject == prompt) {
+            subject = ""
+        }
+        bubble.model.title = subject.isEmpty ? agent : subject
         bubble.model.appName = agent
         bubble.model.updated = number(taskCache[focusID]?["updated"])
         bubble.model.source = row.source
@@ -1162,7 +1165,9 @@ final class KittenShell: NSObject {
     private func taskFields(id: String, fallback: KittenRow) -> TaskFields {
         var fields = TaskFields()
         guard let task = taskCache[id] else { return fields }
-        fields.summary = ""
+        let prompt = string(task["prompt"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let detail = string(task["detail"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        fields.summary = (!detail.isEmpty && detail != prompt) ? detail : ""
         fields.requestID = string(task["request_id"])
         fields.questionID = string(task["question_id"])
         fields.kind = string(task["kind"])

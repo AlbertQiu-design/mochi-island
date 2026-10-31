@@ -229,6 +229,11 @@ func ReplyWriterOnlyAllowsPermissionActions() throws {
         check(choice?["action"] as? String == "approve")
         check(choice?["kind"] as? String == "plan")
         check(choice?["option_id"] as? String == "approve")
+        check(ReplyWriter.closesBubble(kind: "permission", optionID: "allow"))
+        check(ReplyWriter.closesBubble(kind: "permission", optionID: "deny"))
+        check(ReplyWriter.closesBubble(kind: "", optionID: "Allow"))
+        check(ReplyWriter.closesBubble(kind: "mode", optionID: "deny"))
+        check(ReplyWriter.closesBubble(kind: "plan", optionID: "approve") == false)
     }
 
 func TaskReaderKeepsSource() throws {
@@ -305,6 +310,8 @@ func AgentLaunchFindsInstalledAppsAndCodexFallback() {
         check(SlotFace.agentMark(for: "cursor") == "agent-cursor")
         check(SlotFace.agentMark(for: "Codex") == "agent-codex")
         check(SlotFace.agentMark(for: "grok") == "agent-grok")
+        check(SlotFace.agentMark(for: "claude") == "agent-claude")
+        check(SlotFace.displayName(for: "claude") == "Claude")
     }
 
 struct SplitMix64: RandomNumberGenerator {
@@ -559,6 +566,12 @@ func SpecConstantsAndShellGeometry() {
     let insetTop = (AppConfig.capsulePadY + (AppConfig.agentRow - AppConfig.agentIcon) / 2) * 2
     check(CapsuleOutline.contains(CGPoint(x: insetX + 1, y: tall - insetTop - 1), width: wide, height: tall))
     check(CapsuleOutline.contains(CGPoint(x: 2, y: 2), width: wide, height: tall) == false)
+    check(BubbleAge.relative(updated: 0, now: 100) == "")
+    check(BubbleAge.relative(updated: 100, now: 130) == "now")
+    check(BubbleAge.relative(updated: 100, now: 160) == "1m")
+    check(BubbleAge.relative(updated: 100, now: 100 + 3600) == "1h")
+    check(BubbleAge.relative(updated: 100, now: 100 + 47 * 3600) == "47h")
+    check(BubbleAge.relative(updated: 100, now: 100 + 50 * 3600) == "2d")
     check(abs(ShellScale.factor(1.37) - 1.37) < 0.0001)
     check(IslandPrefs.parse(["pet_scale": 1.5]).petScale == 1.5)
     check(IslandPrefs.parse(["pet_scale": 4]).petScale == 2)
@@ -846,6 +859,20 @@ func NewWaitSelectsOnlyAfterTheFirstSnapshot() {
     check(second.slots.first { $0.id == "w2" }?.source == "codex")
 }
 
+func iconSources(_ outcome: HookOutcome?) -> [String] {
+    guard let outcome else { return [] }
+    return AgentIconList.rows([
+        AgentIconCandidate(
+            id: outcome.id,
+            source: outcome.source,
+            title: outcome.title,
+            status: outcome.status,
+            read: false,
+            updated: 20
+        )
+    ]).map(\.source)
+}
+
 func SubmittedChatKeepsTheAgentAndDropsThePrompt() throws {
     let secret = "合并到一个文件"
     let outcome = HookEvents.interpret(sourceFlag: nil, payload: [
@@ -866,8 +893,17 @@ func SubmittedChatKeepsTheAgentAndDropsThePrompt() throws {
     check(text.contains(secret) == false)
     check(text.contains("rm -rf") == false)
     check(text.contains("secret message") == false)
+    check(text.contains("\"prompt\"") == false)
+    check(text.contains("\"command\"") == false)
     check(text.contains("\"source\" : \"cursor\"") || text.contains("\"source\":\"cursor\""))
     check(text.contains("transcript") == false)
+    let saved = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+    let savedTasks = saved?["tasks"] as? [String: Any]
+    let savedChat = savedTasks?["11111111-2222-3333-4444-555555555555"] as? [String: Any]
+    check(savedChat?["detail"] as? String == "Chat")
+    check(savedChat?["source"] as? String == "cursor")
+    check(savedChat?["prompt"] == nil)
+    check(iconSources(outcome) == ["cursor"])
     let codex = HookEvents.interpret(sourceFlag: "codex", payload: [
         "hook_event_name": "UserPromptSubmit",
         "session_id": "codex-session",
@@ -876,6 +912,18 @@ func SubmittedChatKeepsTheAgentAndDropsThePrompt() throws {
     check(codex?.source == "codex")
     check(codex?.title == "Codex")
     check(codex?.status == "running")
+    check(codex?.detail == "Chat")
+    check(iconSources(codex) == ["codex"])
+    let claudeChat = HookEvents.interpret(sourceFlag: "claude", payload: [
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": "claude-chat",
+        "prompt": secret,
+        "command": "echo hi"
+    ])
+    check(claudeChat?.source == "claude")
+    check(claudeChat?.status == "running")
+    check(claudeChat?.detail == "Chat")
+    check(iconSources(claudeChat) == ["claude"])
     let permission = HookEvents.interpret(sourceFlag: nil, payload: [
         "hook_event_name": "beforeShellExecution",
         "conversation_id": "11111111-2222-3333-4444-555555555555",
@@ -885,6 +933,17 @@ func SubmittedChatKeepsTheAgentAndDropsThePrompt() throws {
     check(permission?.waitsForPermission == true)
     check(permission?.permissionStyle == "cursor")
     check(permission?.options.map(\.self["id"]) == ["allow", "deny"])
+    check(permission?.detail == "Shell")
+    let shellURL = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-hook-\(UUID().uuidString).json")
+    HookEvents.commit(permission!, tasksURL: shellURL, now: 21)
+    let shellText = String(data: try Data(contentsOf: shellURL), encoding: .utf8) ?? ""
+    check(shellText.contains("echo hi") == false)
+    let shellRoot = try JSONSerialization.jsonObject(with: Data(contentsOf: shellURL)) as? [String: Any]
+    let shellTasks = shellRoot?["tasks"] as? [String: Any]
+    let shellRecord = shellTasks?["11111111-2222-3333-4444-555555555555"] as? [String: Any]
+    check(shellRecord?["detail"] as? String == "Shell")
+    check(shellRecord?["command"] == nil)
+    check(shellRecord?["prompt"] == nil)
     let claude = HookEvents.interpret(sourceFlag: "claude", payload: [
         "hook_event_name": "PermissionRequest",
         "session_id": "claude-1",
@@ -893,6 +952,7 @@ func SubmittedChatKeepsTheAgentAndDropsThePrompt() throws {
     check(claude?.source == "claude")
     check(claude?.status == "running")
     check(claude?.waitsForPermission == false)
+    check(claude?.detail == "Permission")
     let cursorAgain = HookEvents.interpret(sourceFlag: "claude", payload: [
         "hook_event_name": "UserPromptSubmit",
         "cursor_version": "1.0",
@@ -900,6 +960,11 @@ func SubmittedChatKeepsTheAgentAndDropsThePrompt() throws {
         "prompt": secret
     ])
     check(cursorAgain?.source == "cursor")
+    check(cursorAgain?.detail == "Chat")
+    check(HookInstaller.events.contains("beforeSubmitPrompt"))
+    check(HookInstaller.commandEvents.contains("UserPromptSubmit"))
+    check(HookInstaller.events.contains { $0.lowercased().contains("gpt") } == false)
+    check(HookInstaller.commandEvents.contains { $0.lowercased().contains("gpt") } == false)
     let stdout = HookEvents.permissionStdout(style: "codex", action: "deny")
     let decision = (stdout["hookSpecificOutput"] as? [String: Any])?["decision"] as? [String: Any]
     check(decision?["behavior"] as? String == "deny")

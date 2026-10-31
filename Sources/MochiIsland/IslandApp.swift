@@ -213,7 +213,14 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
                 acknowledged: body["acknowledged"] as? Bool ?? false
             ))
         case "cursorChoice":
-            reply(requestID, session.choicePayload(body))
+            let result = session.choicePayload(body)
+            reply(requestID, result)
+            let kind = body["kind"] as? String ?? ""
+            let option = body["option_id"] as? String ?? ""
+            if (result["ok"] as? Bool) != false,
+               ReplyWriter.closesBubble(kind: kind, optionID: option) {
+                capsule.hideCard()
+            }
         case "openAgent":
             reply(requestID, session.openAgent(
                 source: body["source"] as? String ?? "",

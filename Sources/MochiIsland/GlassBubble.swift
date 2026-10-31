@@ -175,7 +175,7 @@ struct BubbleFace: View {
         }
     }
 
-    /// Same order as the agent card: subject, then source and time, then a quiet status.
+    /// One title line, source chip and relative time on the right, a smaller detail, then a weaker status.
     private var card: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 6) {
@@ -248,14 +248,7 @@ struct BubbleFace: View {
     }
 
     private var ageLabel: String {
-        guard model.updated > 1 else { return "" }
-        let seconds = max(0, Date().timeIntervalSince1970 - model.updated)
-        if seconds < 60 { return "now" }
-        let minutes = Int(seconds / 60)
-        if minutes < 60 { return "\(minutes)m" }
-        let hours = minutes / 60
-        if hours < 48 { return "\(hours)h" }
-        return "\(hours / 24)d"
+        BubbleAge.relative(updated: model.updated, now: Date().timeIntervalSince1970)
     }
 
     private var picker: some View {

@@ -181,6 +181,15 @@ public enum ReplyWriter {
         try AtomicFile.writeJSON(payload, to: url)
     }
 
+    /// Allow and Deny close the dialogue once the reply file has been written.
+    public static func closesBubble(kind: String, optionID: String) -> Bool {
+        if kind.trimmingCharacters(in: .whitespacesAndNewlines) == "permission" { return true }
+        switch optionID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "allow", "deny": return true
+        default: return false
+        }
+    }
+
     public enum ReplyError: Error {
         case unsupported
     }

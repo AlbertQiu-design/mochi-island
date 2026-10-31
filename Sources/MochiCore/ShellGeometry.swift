@@ -192,6 +192,20 @@ public enum BubblePlacer {
     }
 }
 
+/// Relative time beside the source chip. Empty when the task has no timestamp.
+public enum BubbleAge {
+    public static func relative(updated: Double, now: Double) -> String {
+        guard updated > 1 else { return "" }
+        let seconds = max(0, now - updated)
+        if seconds < 60 { return "now" }
+        let minutes = Int(seconds / 60)
+        if minutes < 60 { return "\(minutes)m" }
+        let hours = minutes / 60
+        if hours < 48 { return "\(hours)h" }
+        return "\(hours / 24)d"
+    }
+}
+
 /// Constant-width capsule in y-up coordinates, origin at the bottom left.
 public enum CapsuleOutline {
     public static func contains(_ point: CGPoint, width: CGFloat, height: CGFloat) -> Bool {

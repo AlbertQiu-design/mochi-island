@@ -184,6 +184,7 @@ final class SettingsChrome: NSObject, NSWindowDelegate {
         panel.orderOut(nil)
     }
 
+    /// Places the panel beside the capsule. Pet-scale changes do not call this, so the window stays until settings opens again.
     func reposition(capsule: NSRect, dock: String, host: NSWindow) {
         guard isVisible else { return }
         place(capsule: capsule, dock: dock, host: host)
@@ -404,22 +405,18 @@ struct SettingsRoot: View {
 
     private func tabButton(_ item: SettingsTab) -> some View {
         let selected = model.tab == item
-        return Button {
-            choose(item)
-        } label: {
-            ZStack {
-                if selected { selectionPlate }
-                Text(item.title)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(selected ? Self.selectedInk : Self.idleInk)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
+        return ZStack {
+            if selected { selectionPlate }
+            Text(item.title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(selected ? Self.selectedInk : Self.idleInk)
+                .allowsHitTesting(false)
         }
-        .buttonStyle(TabHitStyle())
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 28, maxHeight: .infinity)
         .frame(height: max(28, AppConfig.settingsBarHeight - 4))
         .contentShape(Rectangle())
+        .onTapGesture { choose(item) }
+        .accessibilityElement(children: .combine)
         .accessibilityLabel(item.title)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
@@ -440,6 +437,7 @@ struct SettingsRoot: View {
         }
         .matchedGeometryEffect(id: "settings-tab", in: tabNS)
         .padding(1)
+        .allowsHitTesting(false)
     }
 
     private func choose(_ item: SettingsTab) {
@@ -561,14 +559,6 @@ struct SettingsRoot: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-    }
-}
-
-private struct TabHitStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
     }
 }
 

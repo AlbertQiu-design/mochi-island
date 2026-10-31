@@ -14,6 +14,8 @@ public struct HookOutcome: Equatable {
     public var waitsForPermission: Bool
     /// `cursor` or `codex` when the hook must answer allow or deny. Empty prints `{}`.
     public var permissionStyle: String
+    /// Short category such as Chat or Shell. Never prompt or command text.
+    public var detail: String
 
     public init(
         id: String,
@@ -25,7 +27,8 @@ public struct HookOutcome: Equatable {
         questionID: String = "",
         options: [[String: String]] = [],
         waitsForPermission: Bool = false,
-        permissionStyle: String = ""
+        permissionStyle: String = "",
+        detail: String = ""
     ) {
         self.id = id
         self.source = source
@@ -37,6 +40,7 @@ public struct HookOutcome: Equatable {
         self.options = options
         self.waitsForPermission = waitsForPermission
         self.permissionStyle = permissionStyle
+        self.detail = detail
     }
 }
 
@@ -62,7 +66,8 @@ public enum HookEvents {
             questionID: mapped == "wait" ? choice.questionID : "",
             options: mapped == "wait" ? options : [],
             waitsForPermission: waits,
-            permissionStyle: waits ? (source == "codex" ? "codex" : "cursor") : ""
+            permissionStyle: waits ? (source == "codex" ? "codex" : "cursor") : "",
+            detail: safeDetail(for: event)
         )
     }
 
@@ -83,6 +88,10 @@ public enum HookEvents {
             questionID = previous["question_id"] as? String ?? ""
             options = stringOptions(previous["options"])
         }
+        var detail = outcome.detail
+        if detail.isEmpty {
+            detail = string(previous["detail"])
+        }
         if oldKey != outcome.id { tasks.removeValue(forKey: oldKey) }
         var record: [String: Any] = [
             "id": outcome.id,
@@ -91,6 +100,9 @@ public enum HookEvents {
             "source": outcome.source,
             "updated": now
         ]
+        if !detail.isEmpty {
+            record["detail"] = detail
+        }
         if status == "wait" {
             record["kind"] = kind
             record["options"] = options
@@ -167,6 +179,22 @@ public enum HookEvents {
             return "running"
         case "sessionend", "subagentstop":
             return failed(payload) ? "fail" : "done"
+        default:
+            return ""
+        }
+    }
+
+    /// A category for the bubble. The payload's prompt and command are never copied.
+    private static func safeDetail(for event: String) -> String {
+        switch event {
+        case "beforeSubmitPrompt", "UserPromptSubmit":
+            return "Chat"
+        case "beforeShellExecution":
+            return "Shell"
+        case "beforeMCPExecution":
+            return "MCP"
+        case "PermissionRequest", "permission_request":
+            return "Permission"
         default:
             return ""
         }
