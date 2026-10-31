@@ -105,6 +105,7 @@ final class BubbleModel: ObservableObject {
     @Published var source = "cursor"
     @Published var status = ""
     @Published var summary = ""
+    @Published var updated: Double = 0
     @Published var options: [BubbleChoice] = []
     @Published var icon: NSImage?
     @Published var beakY: CGFloat = 28
@@ -174,40 +175,48 @@ struct BubbleFace: View {
         }
     }
 
+    /// Same order as the agent card: subject, then source and time, then a quiet status.
     private var card: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 6) {
                 icon(model.icon, source: model.source, side: 16)
-                VStack(alignment: .leading, spacing: 1) {
+                Text(model.title.isEmpty ? model.appName : model.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 4)
+                if !model.appName.isEmpty {
                     Text(model.appName)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Color.primary.opacity(0.1)))
+                }
+                if !ageLabel.isEmpty {
+                    Text(ageLabel)
+                        .font(.system(size: 11, weight: .regular))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    Text(model.title.isEmpty ? model.appName : model.title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .contentShape(Rectangle())
             .onTapGesture { model.onOpen?() }
+            if !model.summary.isEmpty {
+                Text(model.summary)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .onTapGesture { model.onOpen?() }
+            }
             if !model.status.isEmpty {
                 Text(model.status)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.primary)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(.tertiary)
                     .lineLimit(1)
-            }
-            if !model.summary.isEmpty {
-                ScrollView {
-                        Text(model.summary)
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .lineLimit(4)
-                }
-                .frame(height: model.summaryHeight)
-                .onTapGesture { model.onOpen?() }
             }
             if !model.options.isEmpty {
                 VStack(spacing: 6) {
@@ -236,6 +245,17 @@ struct BubbleFace: View {
         .padding(.horizontal, AppConfig.bubblePadX)
         .padding(.vertical, AppConfig.bubblePadY)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var ageLabel: String {
+        guard model.updated > 1 else { return "" }
+        let seconds = max(0, Date().timeIntervalSince1970 - model.updated)
+        if seconds < 60 { return "now" }
+        let minutes = Int(seconds / 60)
+        if minutes < 60 { return "\(minutes)m" }
+        let hours = minutes / 60
+        if hours < 48 { return "\(hours)h" }
+        return "\(hours / 24)d"
     }
 
     private var picker: some View {
@@ -400,26 +420,25 @@ final class BubblePanel: NSObject {
         let summaryCap = max(14, screen / 2)
         let summaryFont = NSFont.systemFont(ofSize: 11, weight: .regular)
         let titleFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        let summary = model.summary.isEmpty
+        model.summaryHeight = model.summary.isEmpty
             ? 0
-            : min(summaryCap, BubbleMeasure.textHeight(model.summary, width: textWidth, font: summaryFont, lines: 4))
-        model.summaryHeight = summary
-        let title = BubbleMeasure.textHeight(model.title.isEmpty ? model.appName : model.title, width: textWidth - 22, font: titleFont, lines: 2)
+            : min(summaryCap, BubbleMeasure.textHeight(model.summary, width: textWidth, font: summaryFont, lines: 1))
+        let title = BubbleMeasure.textHeight(model.title.isEmpty ? model.appName : model.title, width: textWidth - 22, font: titleFont, lines: 1)
         var choices: CGFloat = 0
         if !model.options.isEmpty {
             for option in model.options {
                 choices += BubbleMeasure.textHeight(option.label, width: textWidth - 20, font: titleFont, lines: 4) + 16 + 6
             }
         }
-        let status: CGFloat = model.status.isEmpty ? 0 : 16
-        let appLine: CGFloat = model.kind == .picker || model.kind == .label ? 0 : 14
+        let status: CGFloat = model.status.isEmpty ? 0 : 14
+        let preview: CGFloat = model.summary.isEmpty ? 0 : 16
         switch model.kind {
         case .picker:
             model.computedHeight = max(AppConfig.bubbleMinHeight, 28 + AppConfig.bubblePadY * 2)
         case .label:
             model.computedHeight = max(AppConfig.bubbleMinHeight, title + AppConfig.bubblePadY * 2)
         case .card, .alert:
-            let body = AppConfig.bubblePadY * 2 + max(16, title) + appLine + status + summary + choices + 12
+            let body = AppConfig.bubblePadY * 2 + 18 + preview + status + choices + 8
             model.computedHeight = max(AppConfig.bubbleMinHeight, body)
         }
     }
