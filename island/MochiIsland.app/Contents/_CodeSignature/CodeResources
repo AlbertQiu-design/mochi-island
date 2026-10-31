@@ -139,10 +139,10 @@
 		<dict>
 			<key>cdhash</key>
 			<data>
-			uIxSMTwAw5zHRogaCmelQAAVPs4=
+			IKvpFnR2Eohrh93/h/pLz4H1fSI=
 			</data>
 			<key>requirement</key>
-			<string>cdhash H"b88c52313c00c39cc746881a0a67a54000153ece" or cdhash H"3df09e5137195b8b29f848d4ae5dbc0b29e55ef5"</string>
+			<string>cdhash H"20abe916747612886b87ddff87fa4bcf81f57d22" or cdhash H"5150ccc1dc018a0740f6a4615f63e7c1003be1fd"</string>
 		</dict>
 		<key>Resources/AppIcon.icns</key>
 		<dict>

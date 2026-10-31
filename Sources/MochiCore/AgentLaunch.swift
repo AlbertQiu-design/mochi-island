@@ -24,6 +24,10 @@ public enum AgentLaunch {
             return "grok-bot"
         case "gpt", "chatgpt", "openai":
             return "gpt"
+        case "copilot", "github-copilot", "github copilot":
+            return "copilot"
+        case "opencode", "open-code", "open code":
+            return "opencode"
         case "mochi", "cat", "小猫":
             return "mochi"
         default:
@@ -60,6 +64,14 @@ public enum AgentLaunch {
             names = ["ChatGPT"]
             fallback = "https://chatgpt.com"
             missing = "ChatGPT.app is not installed; opened the ChatGPT page."
+        case "copilot":
+            names = []
+            fallback = "https://github.com/features/copilot"
+            missing = "GitHub Copilot CLI stays in the terminal."
+        case "opencode":
+            names = []
+            fallback = "https://opencode.ai"
+            missing = "OpenCode stays in the terminal."
         default:
             names = ["Cursor"]
             fallback = "https://cursor.com"

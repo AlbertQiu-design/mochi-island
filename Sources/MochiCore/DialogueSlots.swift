@@ -75,6 +75,8 @@ public struct DialogueSlotStore: Codable, Equatable {
         case "mochi": return "mochi"
         case "codex": return "codex"
         case "claude": return "claude"
+        case "copilot": return "copilot"
+        case "opencode": return "opencode"
         case "gpt": return "gpt"
         default: return "cursor"
         }

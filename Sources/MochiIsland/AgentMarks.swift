@@ -136,6 +136,15 @@ struct AgentMark: View {
             let scale = min(size.width, size.height) / 28
             context.scaleBy(x: scale, y: scale)
             switch AgentLaunch.normalize(source) {
+            case "copilot":
+                context.fill(Path(ellipseIn: CGRect(x: 1, y: 1, width: 26, height: 26)), with: .color(Color(white: 0.12)))
+                context.stroke(Path(ellipseIn: CGRect(x: 7, y: 7, width: 14, height: 14)), with: .color(.white), lineWidth: 1.6)
+            case "opencode":
+                context.fill(Path(ellipseIn: CGRect(x: 1, y: 1, width: 26, height: 26)), with: .color(Color(red: 92 / 255, green: 124 / 255, blue: 92 / 255)))
+                var slash = Path()
+                slash.move(to: CGPoint(x: 10, y: 8))
+                slash.addLine(to: CGPoint(x: 18, y: 20))
+                context.stroke(slash, with: .color(.white), style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
             case "claude":
                 context.fill(Path(ellipseIn: CGRect(x: 1, y: 1, width: 26, height: 26)), with: .color(Color(red: 204 / 255, green: 122 / 255, blue: 92 / 255)))
                 var mark = Path()

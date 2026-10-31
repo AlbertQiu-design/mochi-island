@@ -45,29 +45,34 @@ public struct HookOutcome: Equatable {
 }
 
 public enum HookEvents {
-    public static func interpret(sourceFlag: String?, payload: [String: Any]) -> HookOutcome? {
-        let event = eventName(in: payload)
+    public static func interpret(
+        sourceFlag: String?,
+        payload: [String: Any],
+        environment: [String: String] = [:],
+        eventFlag: String? = nil
+    ) -> HookOutcome? {
+        let event = eventName(in: payload, fallback: eventFlag)
         guard !event.isEmpty else { return nil }
-        let source = resolvedSource(flag: sourceFlag, payload: payload)
+        let source = resolvedSource(flag: sourceFlag, payload: payload, environment: environment)
         let mapped = status(for: event, payload: payload, source: source)
         guard !mapped.isEmpty else { return nil }
-        let permission = isPermission(event)
-        let waits = permission && source != "claude"
+        let permission = isPermission(event, source: source)
+        let waits = permission && (source == "cursor" || source == "codex")
         let choice = choiceOptions(payload: payload, event: event)
-        let options = permission ? allowDeny : choice.options
-        let kind = permission ? "permission" : choice.kind
+        let options = waits ? allowDeny : choice.options
+        let kind = waits ? "permission" : choice.kind
         return HookOutcome(
             id: sessionID(in: payload, source: source),
             source: source,
             title: SlotFace.displayName(for: source),
             status: mapped,
-            kind: mapped == "wait" ? kind : "",
+            kind: mapped == "wait" && waits ? kind : (mapped == "wait" ? "" : ""),
             requestID: waits ? requestID(in: payload) : "",
-            questionID: mapped == "wait" ? choice.questionID : "",
-            options: mapped == "wait" ? options : [],
+            questionID: waits ? choice.questionID : "",
+            options: waits ? options : [],
             waitsForPermission: waits,
             permissionStyle: waits ? (source == "codex" ? "codex" : "cursor") : "",
-            detail: safeDetail(for: event)
+            detail: safeDetail(for: event, source: source)
         )
     }
 
@@ -80,6 +85,11 @@ public enum HookEvents {
         var kind = outcome.kind
         var options = outcome.options
         var questionID = outcome.questionID
+        if status == "closed" {
+            tasks.removeValue(forKey: outcome.id)
+            if oldKey != outcome.id { tasks.removeValue(forKey: oldKey) }
+            return
+        }
         if status == "heartbeat" {
             status = previous["status"] as? String ?? "running"
             if !["running", "wait", "done", "fail"].contains(status) { status = "running" }
@@ -138,20 +148,33 @@ public enum HookEvents {
         ["id": "deny", "label": "Deny"]
     ]
 
-    private static func resolvedSource(flag: String?, payload: [String: Any]) -> String {
+    private static func resolvedSource(flag: String?, payload: [String: Any], environment: [String: String]) -> String {
+        if grokRuntime(environment) { return "grok-bot" }
         if let version = payload["cursor_version"] as? String,
            !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "cursor"
         }
-        switch (flag ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "codex": return "codex"
-        case "claude", "claude-code": return "claude"
-        case "cursor": return "cursor"
-        default: return "cursor"
+        let flagged = AgentLaunch.normalize(flag)
+        switch flagged {
+        case "codex", "claude", "grok-bot", "copilot", "opencode":
+            return flagged
+        default:
+            return "cursor"
         }
     }
 
-    private static func eventName(in payload: [String: Any]) -> String {
+    /// Grok Build sets one of these for every hook it runs, including a Cursor hook imported into Grok.
+    private static func grokRuntime(_ environment: [String: String]) -> Bool {
+        for key in ["GROK_SESSION_ID", "GROK_HOOK_EVENT"] {
+            let value = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !value.isEmpty { return true }
+        }
+        return false
+    }
+
+    /// Copilot's camelCase payload does not include the event name, so the installed command passes it.
+    /// A name already on the payload wins. Grok's PascalCase `hook_event_name` wins over its snake_case alias.
+    private static func eventName(in payload: [String: Any], fallback: String?) -> String {
         let names = ["hook_event_name", "event", "hookEventName", "hook_event"]
         for name in names {
             if let value = payload[name] as? String {
@@ -159,13 +182,107 @@ public enum HookEvents {
                 if !trimmed.isEmpty { return trimmed }
             }
         }
-        return ""
+        return fallback?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     private static func status(for event: String, payload: [String: Any], source: String) -> String {
+        switch source {
+        case "copilot": return copilotStatus(event, payload: payload)
+        case "opencode": return opencodeStatus(event, payload: payload)
+        case "grok-bot":
+            if let native = grokNative(event, payload: payload) {
+                return native
+            }
+            return cursorFamilyStatus(event, payload: payload, source: "cursor")
+        default: return cursorFamilyStatus(event, payload: payload, source: source)
+        }
+    }
+
+    /// GitHub Copilot CLI events. Unknown names are ignored. Session end closes the slot.
+    private static func copilotStatus(_ event: String, payload: [String: Any]) -> String {
+        switch event {
+        case "sessionStart", "SessionStart",
+             "userPromptSubmitted", "UserPromptSubmit",
+             "preToolUse", "PreToolUse",
+             "postToolUse", "PostToolUse",
+             "subagentStart", "SubagentStart",
+             "postToolUseFailure", "PostToolUseFailure":
+            return "running"
+        case "permissionRequest", "PermissionRequest":
+            return "wait"
+        case "notification", "Notification":
+            let kind = token(payload, keys: ["notification_type", "notificationType", "type"])
+            return kind == "permission_prompt" || kind == "elicitation_dialog" ? "wait" : ""
+        case "errorOccurred", "ErrorOccurred":
+            let context = token(payload, keys: ["errorContext", "error_context"])
+            if context == "model_call" { return "fail" }
+            if context == "tool_execution" { return "running" }
+            return ""
+        case "agentStop", "Stop":
+            return "done"
+        case "sessionEnd", "SessionEnd":
+            return "closed"
+        default:
+            return ""
+        }
+    }
+
+    /// OpenCode plugin events. Status type is read; retry text and question text are not.
+    private static func opencodeStatus(_ event: String, payload: [String: Any]) -> String {
+        switch event {
+        case "session.status":
+            switch token(payload, keys: ["status_type", "type"]) {
+            case "busy", "retry": return "running"
+            case "idle": return "done"
+            default:
+                if let status = payload["status"] as? [String: Any] {
+                    switch string(status["type"]) {
+                    case "busy", "retry": return "running"
+                    case "idle": return "done"
+                    default: return ""
+                    }
+                }
+                return ""
+            }
+        case "tool.execute.before", "permission.replied", "question.replied", "question.rejected":
+            return "running"
+        case "permission.asked", "question.asked":
+            return "wait"
+        case "session.idle":
+            return "done"
+        case "session.error":
+            return "fail"
+        default:
+            return ""
+        }
+    }
+
+    /// xAI grok events. Nil means this is not one of those names, so a Cursor hook Grok imported can
+    /// still update the same session. An empty string ignores the event. `idle_prompt` stays empty
+    /// so it cannot cover a finished or failed turn. PascalCase `Stop` is the turn end, not Cursor's heartbeat.
+    private static func grokNative(_ event: String, payload: [String: Any]) -> String? {
+        switch event {
+        case "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStart",
+             "PermissionDenied", "PostToolUseFailure":
+            return "running"
+        case "Notification":
+            let kind = token(payload, keys: ["notification_type", "notificationType", "type"])
+            return kind == "permission_prompt" ? "wait" : ""
+        case "Stop":
+            return "done"
+        case "StopFailure", "StopCancelled":
+            return "fail"
+        case "SessionEnd":
+            return "closed"
+        default:
+            return nil
+        }
+    }
+
+    private static func cursorFamilyStatus(_ event: String, payload: [String: Any], source: String) -> String {
         let name = event.lowercased().replacingOccurrences(of: "_", with: "")
         if name == "stopfailure" { return "fail" }
-        if isPermission(event) {
+        if isPermission(event, source: source) {
             return source == "claude" ? "running" : "wait"
         }
         if isChoice(payload: payload), !isFinishedTool(event) { return "wait" }
@@ -185,28 +302,37 @@ public enum HookEvents {
     }
 
     /// A category for the bubble. The payload's prompt and command are never copied.
-    private static func safeDetail(for event: String) -> String {
+    private static func safeDetail(for event: String, source: String) -> String {
         switch event {
-        case "beforeSubmitPrompt", "UserPromptSubmit":
+        case "beforeSubmitPrompt", "UserPromptSubmit", "userPromptSubmitted":
             return "Chat"
         case "beforeShellExecution":
             return "Shell"
         case "beforeMCPExecution":
             return "MCP"
-        case "PermissionRequest", "permission_request":
-            return "Permission"
+        case "PermissionRequest", "permission_request", "permissionRequest", "permission.asked":
+            return source == "cursor" || source == "codex" || source == "claude" ? "Permission" : ""
         default:
             return ""
         }
     }
 
-    private static func isPermission(_ event: String) -> Bool {
+    private static func isPermission(_ event: String, source: String) -> Bool {
+        guard source == "cursor" || source == "codex" || source == "claude" else { return false }
         switch event {
         case "beforeShellExecution", "beforeMCPExecution", "PermissionRequest", "permission_request":
             return true
         default:
             return false
         }
+    }
+
+    private static func token(_ payload: [String: Any], keys: [String]) -> String {
+        for key in keys {
+            let value = string(payload[key])
+            if !value.isEmpty { return value }
+        }
+        return ""
     }
 
     private static func isFinishedTool(_ event: String) -> Bool {
@@ -275,7 +401,7 @@ public enum HookEvents {
     /// Uses id fields already in the JSON. A transcript path contributes only its file stem.
     /// The file itself is never opened.
     private static func sessionID(in payload: [String: Any], source: String) -> String {
-        for key in ["conversation_id", "session_id", "subagent_id", "composer_id", "thread_id"] {
+        for key in ["conversation_id", "session_id", "sessionId", "sessionID", "subagent_id", "composer_id", "thread_id"] {
             let value = string(payload[key])
             if !value.isEmpty { return bareID(value) }
         }

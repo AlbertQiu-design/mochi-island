@@ -92,6 +92,7 @@ public enum TaskReader {
         for (key, raw) in tasks {
             guard let item = raw as? [String: Any] else { continue }
             var status = item["status"] as? String ?? "running"
+            if status == "closed" { continue }
             if !["running", "wait", "done", "fail"].contains(status) {
                 status = "running"
             }

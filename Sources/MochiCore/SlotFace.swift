@@ -9,6 +9,8 @@ public enum SlotFace {
         case "mochi": return "kitten"
         case "codex": return "codex"
         case "claude": return "claude"
+        case "copilot": return "copilot"
+        case "opencode": return "opencode"
         case "gpt": return "gpt"
         default: return "cursor"
         }
@@ -33,6 +35,8 @@ public enum SlotFace {
         case "mochi": return "小猫"
         case "codex": return "Codex"
         case "claude": return "Claude"
+        case "copilot": return "Copilot"
+        case "opencode": return "OpenCode"
         case "gpt": return "GPT"
         default: return "Cursor"
         }
@@ -43,6 +47,8 @@ public enum SlotFace {
         switch AgentLaunch.normalize(source) {
         case "codex": return "agent-codex"
         case "claude": return "agent-claude"
+        case "copilot": return "agent-copilot"
+        case "opencode": return "agent-opencode"
         case "grok-bot": return "agent-grok"
         case "gpt": return "agent-gpt"
         case "mochi": return "kitten-mark"
@@ -55,6 +61,8 @@ public enum SlotFace {
         case "grok-bot": return "Grok"
         case "codex": return "Codex"
         case "claude": return "Claude"
+        case "copilot": return "Copilot"
+        case "opencode": return "OpenCode"
         case "gpt": return "GPT"
         default: return "Cursor"
         }

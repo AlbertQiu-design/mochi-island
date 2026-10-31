@@ -21,11 +21,11 @@ func readStdin() -> [String: Any] {
     return json
 }
 
-func sourceArgument() -> String? {
+func argumentValue(_ name: String) -> String? {
     let args = Array(CommandLine.arguments.dropFirst())
     var index = 0
     while index < args.count {
-        if args[index] == "--source", index + 1 < args.count {
+        if args[index] == name, index + 1 < args.count {
             return args[index + 1]
         }
         index += 1
@@ -75,7 +75,12 @@ func waitPermission(itemID: String, requestID: String) -> String {
 
 func run() {
     let payload = readStdin()
-    let outcome = HookEvents.interpret(sourceFlag: sourceArgument(), payload: payload)
+    let outcome = HookEvents.interpret(
+        sourceFlag: argumentValue("--source"),
+        payload: payload,
+        environment: ProcessInfo.processInfo.environment,
+        eventFlag: argumentValue("--event")
+    )
     if let outcome {
         withLock {
             HookEvents.commit(outcome, tasksURL: stateURL)

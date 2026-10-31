@@ -657,32 +657,32 @@ func PickerFlagsPersistAcrossPrefs() throws {
     check(hidden.pickerCodex)
     check(hidden.pickerGrok)
     check(hidden.pickerGPT == false)
-    check(hidden.pickerSources == ["codex", "grok-bot"])
+    check(hidden.pickerSources == ["codex", "claude", "grok-bot"])
     check(hidden.dictionary["picker_cursor"] as? Bool == false)
     check(hidden.dictionary["picker_codex"] as? Bool == true)
     check(hidden.dictionary["picker_grok"] as? Bool == true)
     check(hidden.dictionary["picker_gpt"] as? Bool == false)
     let again = IslandPrefs.parse(hidden.dictionary, base: IslandPrefs())
-    check(again.pickerSources == ["codex", "grok-bot"])
+    check(again.pickerSources == ["codex", "claude", "grok-bot"])
     let data = try JSONEncoder().encode(hidden)
     let text = String(data: data, encoding: .utf8) ?? ""
     check(text.contains("picker_cursor"))
     check(text.contains("picker_gpt"))
     let decoded = try JSONDecoder().decode(IslandPrefs.self, from: data)
-    check(decoded.pickerSources == ["codex", "grok-bot"])
+    check(decoded.pickerSources == ["codex", "claude", "grok-bot"])
     let legacy = try JSONDecoder().decode(IslandPrefs.self, from: Data("{\"sound\":\"pop\"}".utf8))
     check(legacy.sound == "pop")
     check(legacy.pickerSources == IslandPrefs.pickerOrder)
     let kept = IslandPrefs.parse(["pet_scale": 1.5], base: hidden)
     check(kept.petScale == 1.5)
-    check(kept.pickerSources == ["codex", "grok-bot"])
+    check(kept.pickerSources == ["codex", "claude", "grok-bot"])
     let numbers = IslandPrefs.parse([
         "picker_cursor": 0,
         "picker_codex": 1,
         "picker_grok": 0,
         "picker_gpt": 1
     ])
-    check(numbers.pickerSources == ["codex", "gpt"])
+    check(numbers.pickerSources == ["codex", "claude", "gpt"])
 }
 
 func EmptyFileHasNoSeeds() throws {
@@ -1054,6 +1054,387 @@ func HookRetargetPointsAtTheOpenApp() throws {
     check(rows[0].source == "cursor")
 }
 
+func PassiveHooksReportTheShortlist() throws {
+    func kept(_ outcome: HookOutcome?) -> [String: Any] {
+        guard let outcome else { return ["missing": true] }
+        var tasks: [String: Any] = [:]
+        HookEvents.merge(outcome, into: &tasks, now: 8)
+        return tasks[outcome.id] as? [String: Any] ?? [:]
+    }
+    func clean(_ record: [String: Any]) -> Bool {
+        let banned = [
+            "prompt", "command", "tool_input", "toolInput", "message", "initialPrompt", "initial_prompt",
+            "error", "transcript_path", "last_assistant_message", "notification", "question"
+        ]
+        if banned.contains(where: { record[$0] != nil }) { return false }
+        for value in record.values {
+            if let text = value as? String, text.contains("SECRET") { return false }
+        }
+        return record["missing"] == nil
+    }
+
+    let home = URL(fileURLWithPath: "/Users/example", isDirectory: true)
+    let copilotHome = PassiveHooks.copilotDirectory(home: home, environment: [:])
+    check(copilotHome.lastPathComponent == "hooks")
+    check(copilotHome.deletingLastPathComponent().lastPathComponent == ".copilot")
+    check(copilotHome.path.contains(".github") == false)
+    let custom = PassiveHooks.copilotDirectory(home: home, environment: ["COPILOT_HOME": "/var/copilot-home"])
+    check(custom.path == "/var/copilot-home/hooks")
+    check(custom.path.contains(".github") == false)
+    let blank = PassiveHooks.copilotDirectory(home: home, environment: ["COPILOT_HOME": "  "])
+    check(blank.deletingLastPathComponent().lastPathComponent == ".copilot")
+    check(PassiveHooks.grokDirectory(home: home).path == home.appendingPathComponent(".grok/hooks").path)
+    check(PassiveHooks.openCodePluginURL(home: home).path == home.appendingPathComponent(".config/opencode/plugins/mochi-island.js").path)
+    check(IslandPrefs.pickerOrder == ["cursor", "codex", "claude", "grok-bot", "gpt"])
+    check(IslandPrefs().pickerClaude)
+    check(IslandPrefs.pickerOrder.contains("copilot") == false)
+    check(IslandPrefs.pickerOrder.contains("opencode") == false)
+    check((PassiveHooks.copilotEvents + PassiveHooks.grokEvents).contains { $0.lowercased().contains("gpt") } == false)
+    check(PassiveHooks.grokEvents.contains("SubagentStop") == false)
+
+    let copilotRunning = ["sessionStart", "userPromptSubmitted", "preToolUse", "postToolUse", "subagentStart", "postToolUseFailure"]
+    for name in copilotRunning {
+        let item = HookEvents.interpret(sourceFlag: "copilot", payload: [
+            "hook_event_name": name,
+            "sessionId": "copilot-1",
+            "prompt": "SECRET",
+            "toolArgs": "SECRET",
+            "initialPrompt": "SECRET"
+        ])
+        check(item?.status == "running")
+        check(item?.source == "copilot")
+        check(item?.waitsForPermission == false)
+        check(clean(kept(item)))
+    }
+    let permission = HookEvents.interpret(sourceFlag: "copilot", payload: [
+        "sessionId": "copilot-1",
+        "prompt": "SECRET"
+    ], eventFlag: "permissionRequest")
+    check(permission?.status == "wait")
+    check(permission?.waitsForPermission == false)
+    check(permission?.options.isEmpty == true)
+    check(permission?.permissionStyle.isEmpty == true)
+    check(clean(kept(permission)))
+    for kind in ["permission_prompt", "elicitation_dialog"] {
+        let note = HookEvents.interpret(sourceFlag: "copilot", payload: [
+            "hook_event_name": "notification",
+            "notification_type": kind,
+            "sessionId": "copilot-1",
+            "message": "SECRET"
+        ])
+        check(note?.status == "wait")
+        check(note?.waitsForPermission == false)
+        check(clean(kept(note)))
+    }
+    check(HookEvents.interpret(sourceFlag: "copilot", payload: [
+        "hook_event_name": "notification",
+        "notification_type": "shell_completion",
+        "sessionId": "copilot-1"
+    ]) == nil)
+    let toolError = HookEvents.interpret(sourceFlag: "copilot", payload: [
+        "hook_event_name": "errorOccurred",
+        "errorContext": "tool_execution",
+        "sessionId": "copilot-1",
+        "error": ["message": "SECRET"]
+    ])
+    check(toolError?.status == "running")
+    check(clean(kept(toolError)))
+    let modelError = HookEvents.interpret(sourceFlag: "copilot", payload: [
+        "hook_event_name": "ErrorOccurred",
+        "error_context": "model_call",
+        "sessionId": "copilot-1",
+        "error": ["message": "SECRET"]
+    ])
+    check(modelError?.status == "fail")
+    check(clean(kept(modelError)))
+    check(HookEvents.interpret(sourceFlag: "copilot", payload: [
+        "hook_event_name": "errorOccurred",
+        "errorContext": "system",
+        "sessionId": "copilot-1"
+    ]) == nil)
+    check(HookEvents.interpret(sourceFlag: "copilot", payload: [
+        "hook_event_name": "agentStop",
+        "sessionId": "copilot-1"
+    ])?.status == "done")
+    var copilotTasks: [String: Any] = ["copilot-1": ["id": "copilot-1", "status": "running", "source": "copilot"]]
+    let copilotEnd = HookEvents.interpret(sourceFlag: "copilot", payload: [
+        "hook_event_name": "sessionEnd",
+        "sessionId": "copilot-1",
+        "reason": "error",
+        "error": "SECRET"
+    ])
+    check(copilotEnd?.status == "closed")
+    HookEvents.merge(copilotEnd!, into: &copilotTasks, now: 9)
+    check(copilotTasks["copilot-1"] == nil)
+
+    let busy = HookEvents.interpret(sourceFlag: "opencode", payload: [
+        "hook_event_name": "session.status",
+        "sessionID": "oc-1",
+        "status": ["type": "retry", "message": "SECRET retry"]
+    ])
+    check(busy?.status == "running")
+    check(busy?.id == "oc-1")
+    check(clean(kept(busy)))
+    check(HookEvents.interpret(sourceFlag: "opencode", payload: [
+        "hook_event_name": "session.status",
+        "session_id": "oc-1",
+        "status_type": "busy"
+    ])?.status == "running")
+    check(HookEvents.interpret(sourceFlag: "opencode", payload: [
+        "hook_event_name": "session.status",
+        "session_id": "oc-1",
+        "status_type": "idle"
+    ])?.status == "done")
+    check(HookEvents.interpret(sourceFlag: "opencode", payload: [
+        "hook_event_name": "tool.execute.before",
+        "session_id": "oc-1",
+        "args": ["command": "SECRET"]
+    ])?.status == "running")
+    let asked = HookEvents.interpret(sourceFlag: "opencode", payload: [
+        "hook_event_name": "question.asked",
+        "session_id": "oc-1",
+        "question": "SECRET question"
+    ])
+    check(asked?.status == "wait")
+    check(asked?.waitsForPermission == false)
+    check(clean(kept(asked)))
+    check(HookEvents.interpret(sourceFlag: "opencode", payload: [
+        "hook_event_name": "permission.asked",
+        "session_id": "oc-1"
+    ])?.status == "wait")
+    for name in ["permission.replied", "question.replied", "question.rejected"] {
+        check(HookEvents.interpret(sourceFlag: "opencode", payload: [
+            "hook_event_name": name,
+            "session_id": "oc-1",
+            "question": "SECRET"
+        ])?.status == "running")
+    }
+    check(HookEvents.interpret(sourceFlag: "opencode", payload: [
+        "hook_event_name": "session.idle",
+        "session_id": "oc-1"
+    ])?.status == "done")
+    let failedSession = HookEvents.interpret(sourceFlag: "opencode", payload: [
+        "hook_event_name": "session.error",
+        "session_id": "oc-1",
+        "error": ["message": "SECRET"]
+    ])
+    check(failedSession?.status == "fail")
+    check(clean(kept(failedSession)))
+    check(HookEvents.interpret(sourceFlag: "opencode", payload: [
+        "hook_event_name": "message.updated",
+        "session_id": "oc-1",
+        "text": "SECRET"
+    ]) == nil)
+
+    let grokRunning = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStart", "PermissionDenied", "PostToolUseFailure"]
+    for name in grokRunning {
+        let item = HookEvents.interpret(sourceFlag: "grok", payload: [
+            "hook_event_name": name,
+            "sessionId": "grok-1",
+            "prompt": "SECRET",
+            "toolInput": ["command": "SECRET"],
+            "last_assistant_message": "SECRET"
+        ])
+        check(item?.source == "grok-bot")
+        check(item?.status == "running")
+        check(item?.waitsForPermission == false)
+        check(clean(kept(item)))
+    }
+    let grokWait = HookEvents.interpret(sourceFlag: "grok", payload: [
+        "hook_event_name": "Notification",
+        "notificationType": "permission_prompt",
+        "sessionId": "grok-1",
+        "message": "SECRET"
+    ])
+    check(grokWait?.status == "wait")
+    check(grokWait?.waitsForPermission == false)
+    check(clean(kept(grokWait)))
+    let turn = HookEvents.interpret(
+        sourceFlag: "cursor",
+        payload: [
+            "hook_event_name": "Stop",
+            "cursor_version": "2.4.0",
+            "sessionId": "grok-1",
+            "toolInput": ["command": "SECRET"]
+        ],
+        environment: ["GROK_SESSION_ID": "sess"]
+    )
+    check(turn?.source == "grok-bot")
+    check(turn?.status == "done")
+    check(clean(kept(turn)))
+    check(HookEvents.interpret(sourceFlag: "grok", payload: [
+        "hook_event_name": "StopFailure",
+        "sessionId": "grok-1",
+        "error": "rate_limit"
+    ])?.status == "fail")
+    check(HookEvents.interpret(sourceFlag: "grok", payload: [
+        "hook_event_name": "StopCancelled",
+        "sessionId": "grok-1"
+    ])?.status == "fail")
+    let imported = HookEvents.interpret(
+        sourceFlag: nil,
+        payload: [
+            "hook_event_name": "beforeSubmitPrompt",
+            "cursor_version": "2.4.0",
+            "conversation_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            "prompt": "SECRET prompt"
+        ],
+        environment: ["GROK_HOOK_EVENT": "user_prompt_submit"]
+    )
+    check(imported?.source == "grok-bot")
+    check(imported?.status == "running")
+    check(clean(kept(imported)))
+    let heartbeat = HookEvents.interpret(
+        sourceFlag: nil,
+        payload: ["hook_event_name": "stop", "cursor_version": "1", "sessionId": "grok-1"],
+        environment: ["GROK_SESSION_ID": "sess"]
+    )
+    check(heartbeat?.source == "grok-bot")
+    check(heartbeat?.status == "heartbeat")
+    var grokTasks: [String: Any] = [:]
+    let failedTurn = HookEvents.interpret(sourceFlag: "grok", payload: [
+        "hook_event_name": "StopFailure",
+        "sessionId": "grok-1",
+        "error": ["message": "SECRET"]
+    ])!
+    HookEvents.merge(failedTurn, into: &grokTasks, now: 1)
+    HookEvents.merge(heartbeat!, into: &grokTasks, now: 2)
+    check((grokTasks["grok-1"] as? [String: Any])?["status"] as? String == "fail")
+    let idle = HookEvents.interpret(sourceFlag: "grok", payload: [
+        "hook_event_name": "Notification",
+        "notificationType": "idle_prompt",
+        "sessionId": "grok-1",
+        "message": "SECRET idle"
+    ])
+    check(idle == nil)
+    check((grokTasks["grok-1"] as? [String: Any])?["status"] as? String == "fail")
+    let closed = HookEvents.interpret(sourceFlag: "grok", payload: [
+        "hook_event_name": "SessionEnd",
+        "sessionId": "grok-1"
+    ])
+    check(closed?.status == "closed")
+    HookEvents.merge(closed!, into: &grokTasks, now: 3)
+    check(grokTasks["grok-1"] == nil)
+    let plainCursor = HookEvents.interpret(
+        sourceFlag: nil,
+        payload: ["hook_event_name": "stop", "cursor_version": "1"],
+        environment: ["GROK_SESSION_ID": "   ", "GROK_HOOK_EVENT": ""]
+    )
+    check(plainCursor?.source == "cursor")
+    check(plainCursor?.status == "heartbeat")
+    let importedStop = HookEvents.interpret(sourceFlag: "grok", payload: [
+        "hook_event_name": "SubagentStop",
+        "sessionId": "grok-1"
+    ])
+    check(importedStop?.source == "grok-bot")
+    check(importedStop?.status == "done")
+
+    let rows = AgentIconList.rows([
+        AgentIconCandidate(id: "c", source: "copilot", title: "Copilot", status: "running", read: false, updated: 1),
+        AgentIconCandidate(id: "o", source: "opencode", title: "OpenCode", status: "wait", read: false, updated: 2),
+        AgentIconCandidate(id: "k", source: "claude", title: "Claude", status: "running", read: false, updated: 3)
+    ])
+    check(rows.map(\.source) == ["claude", "copilot", "opencode"])
+    let copilotLaunch = AgentLaunch.plan(source: "github copilot") { _ in false }
+    check(copilotLaunch.appPath == nil)
+    check(copilotLaunch.url == "https://github.com/features/copilot")
+    check(AgentLaunch.plan(source: "open-code") { _ in false }.url == "https://opencode.ai")
+
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-passive-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let binary = directory.appendingPathComponent("MochiHookCLI")
+    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: binary)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary.path)
+    let blockedDir = directory.appendingPathComponent("blocked", isDirectory: true)
+    try FileManager.default.createDirectory(at: blockedDir, withIntermediateDirectories: true)
+    let blocked = PassiveHooks.installCopilot(directory: blockedDir, binaryURL: binary, privacyAccepted: false)
+    check(blocked.needsPrivacy)
+    check(blocked.connected == false)
+    check(FileManager.default.fileExists(atPath: blockedDir.appendingPathComponent("mochi-island.json").path) == false)
+    let missing = PassiveHooks.installGrok(directory: blockedDir, binaryURL: directory.appendingPathComponent("missing"), privacyAccepted: true)
+    check(missing.error == "hook program missing")
+    check(FileManager.default.fileExists(atPath: blockedDir.appendingPathComponent("mochi-island.json").path) == false)
+
+    let copilotDir = directory.appendingPathComponent("copilot-hooks", isDirectory: true)
+    try FileManager.default.createDirectory(at: copilotDir, withIntermediateDirectories: true)
+    let copilotFile = copilotDir.appendingPathComponent("mochi-island.json")
+    try "keep-user".write(to: copilotFile, atomically: true, encoding: .utf8)
+    let installed = PassiveHooks.installCopilot(directory: copilotDir, binaryURL: binary, privacyAccepted: true)
+    check(installed.connected)
+    let backup = try String(contentsOf: copilotFile.appendingPathExtension("mochi-island.bak"), encoding: .utf8)
+    check(backup == "keep-user")
+    let copilotJSON = try JSONSerialization.jsonObject(with: Data(contentsOf: copilotFile)) as? [String: Any]
+    check(copilotJSON?["version"] as? Int == 1)
+    let copilotHooks = copilotJSON?["hooks"] as? [String: Any]
+    check(Set(copilotHooks?.keys.map { String($0) } ?? []) == Set(PassiveHooks.copilotEvents))
+    for name in PassiveHooks.copilotEvents {
+        let entry = (copilotHooks?[name] as? [[String: Any]])?.first
+        let command = entry?["command"] as? String ?? ""
+        check(command == entry?["bash"] as? String)
+        check(command.contains(binary.path))
+        check(command.contains("--source copilot"))
+        check(command.contains("--event \(name)"))
+        check(entry?["timeoutSec"] as? Int == 10)
+        check(entry?[AppConfig.hookMarker] as? Int == AppConfig.hookVersion)
+        check(entry?["hooks"] == nil)
+    }
+    let other = directory.appendingPathComponent("OtherCLI")
+    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: other)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: other.path)
+    check(PassiveHooks.copilotStatus(directory: copilotDir, binaryURL: other).connected == false)
+
+    let grokDir = directory.appendingPathComponent("grok-hooks", isDirectory: true)
+    let grokInstall = PassiveHooks.installGrok(directory: grokDir, binaryURL: binary, privacyAccepted: true)
+    check(grokInstall.connected)
+    let grokFile = grokDir.appendingPathComponent("mochi-island.json")
+    let grokJSON = try JSONSerialization.jsonObject(with: Data(contentsOf: grokFile)) as? [String: Any]
+    check(grokJSON?["version"] == nil)
+    let grokHooks = grokJSON?["hooks"] as? [String: Any]
+    check(Set(grokHooks?.keys.map { String($0) } ?? []) == Set(PassiveHooks.grokEvents))
+    check(grokHooks?["SubagentStop"] == nil)
+    for name in PassiveHooks.grokEvents {
+        let group = (grokHooks?[name] as? [[String: Any]])?.first
+        let entry = (group?["hooks"] as? [[String: Any]])?.first
+        let command = entry?["command"] as? String ?? ""
+        check(command.contains(binary.path))
+        check(command.contains("--source grok"))
+        check(command.contains("--event") == false)
+        check(entry?["timeout"] as? Int == 10)
+        check(entry?[AppConfig.hookMarker] as? Int == AppConfig.hookVersion)
+    }
+    let names = try FileManager.default.contentsOfDirectory(at: grokDir, includingPropertiesForKeys: nil).map(\.lastPathComponent)
+    check(names == ["mochi-island.json"])
+    check(names.contains { $0.contains(".tmp") } == false)
+
+    let plugin = directory.appendingPathComponent("plugins/mochi-island.js")
+    try FileManager.default.createDirectory(at: plugin.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try "old-plugin".write(to: plugin, atomically: true, encoding: .utf8)
+    let open = PassiveHooks.installOpenCode(pluginURL: plugin, binaryURL: binary, privacyAccepted: true)
+    check(open.connected)
+    let pluginBackup = try String(contentsOf: plugin.appendingPathExtension("mochi-island.bak"), encoding: .utf8)
+    check(pluginBackup == "old-plugin")
+    let script = try String(contentsOf: plugin, encoding: .utf8)
+    for name in ["session.status", "tool.execute.before", "permission.asked", "permission.replied", "question.asked", "question.replied", "question.rejected", "session.idle", "session.error"] {
+        check(script.contains(name))
+    }
+    check(script.contains("spawnSync"))
+    check(script.contains("\"--source\", \"opencode\""))
+    check(script.contains("event.properties"))
+    check(script.contains("message.updated") == false)
+    check(script.contains("message.part") == false)
+    check(script.contains("http://") == false)
+    check(script.contains("https://") == false)
+    check(script.contains("createServer") == false)
+    let removed = PassiveHooks.remove(fileURL: plugin, binaryURL: binary)
+    check(removed.connected == false)
+    check(FileManager.default.fileExists(atPath: plugin.path) == false)
+
+    let tasksURL = directory.appendingPathComponent("tasks.json")
+    let raw: [String: Any] = ["tasks": ["gone": ["id": "gone", "status": "closed", "source": "copilot", "updated": 1]]]
+    try JSONSerialization.data(withJSONObject: raw).write(to: tasksURL)
+    check(TaskReader.load(tasksURL: tasksURL, now: 10).isEmpty)
+}
+
 func LiveHooksFixWhenAsked() {
         guard let binary = ProcessInfo.processInfo.environment["MOCHI_FIX_LIVE_HOOKS"], !binary.isEmpty else { return }
         let cursor = AppConfig.cursorDirectory
@@ -1101,5 +1482,6 @@ NewWaitSelectsOnlyAfterTheFirstSnapshot()
 try SubmittedChatKeepsTheAgentAndDropsThePrompt()
 try CodexAndClaudeHooksInstallMarkedCommands()
 try HookRetargetPointsAtTheOpenApp()
+try PassiveHooksReportTheShortlist()
 LiveHooksFixWhenAsked()
 print("MochiCore checks passed")

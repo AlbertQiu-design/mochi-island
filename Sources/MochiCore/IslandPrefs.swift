@@ -22,17 +22,19 @@ public struct IslandPrefs: Codable, Equatable {
     public var kittenPlaced: Bool
     public var pickerCursor: Bool
     public var pickerCodex: Bool
+    public var pickerClaude: Bool
     public var pickerGrok: Bool
     public var pickerGPT: Bool
 
     public static let soundIDs = ["boop", "chirp", "mew", "pop", "twinkle"]
     public static let docks = ["left", "right"]
-    public static let pickerOrder = ["cursor", "codex", "grok-bot", "gpt"]
+    public static let pickerOrder = ["cursor", "codex", "claude", "grok-bot", "gpt"]
 
     public var pickerSources: [String] {
         var sources: [String] = []
         if pickerCursor { sources.append("cursor") }
         if pickerCodex { sources.append("codex") }
+        if pickerClaude { sources.append("claude") }
         if pickerGrok { sources.append("grok-bot") }
         if pickerGPT { sources.append("gpt") }
         return sources
@@ -60,6 +62,7 @@ public struct IslandPrefs: Codable, Equatable {
         kittenPlaced: Bool = false,
         pickerCursor: Bool = true,
         pickerCodex: Bool = true,
+        pickerClaude: Bool = true,
         pickerGrok: Bool = true,
         pickerGPT: Bool = true
     ) {
@@ -84,6 +87,7 @@ public struct IslandPrefs: Codable, Equatable {
         self.kittenPlaced = kittenPlaced
         self.pickerCursor = pickerCursor
         self.pickerCodex = pickerCodex
+        self.pickerClaude = pickerClaude
         self.pickerGrok = pickerGrok
         self.pickerGPT = pickerGPT
         if kittenPlaced {
@@ -112,6 +116,7 @@ public struct IslandPrefs: Codable, Equatable {
             "kitten_placed": kittenPlaced,
             "picker_cursor": pickerCursor,
             "picker_codex": pickerCodex,
+            "picker_claude": pickerClaude,
             "picker_grok": pickerGrok,
             "picker_gpt": pickerGPT
         ]
@@ -125,6 +130,7 @@ public struct IslandPrefs: Codable, Equatable {
         case kittenPlaced = "kitten_placed"
         case pickerCursor = "picker_cursor"
         case pickerCodex = "picker_codex"
+        case pickerClaude = "picker_claude"
         case pickerGrok = "picker_grok"
         case pickerGPT = "picker_gpt"
     }
@@ -153,6 +159,7 @@ public struct IslandPrefs: Codable, Equatable {
             kittenPlaced: try container.decodeIfPresent(Bool.self, forKey: .kittenPlaced) ?? false,
             pickerCursor: try container.decodeIfPresent(Bool.self, forKey: .pickerCursor) ?? true,
             pickerCodex: try container.decodeIfPresent(Bool.self, forKey: .pickerCodex) ?? true,
+            pickerClaude: try container.decodeIfPresent(Bool.self, forKey: .pickerClaude) ?? true,
             pickerGrok: try container.decodeIfPresent(Bool.self, forKey: .pickerGrok) ?? true,
             pickerGPT: try container.decodeIfPresent(Bool.self, forKey: .pickerGPT) ?? true
         )
@@ -182,6 +189,7 @@ public struct IslandPrefs: Codable, Equatable {
         try container.encode(kittenPlaced, forKey: .kittenPlaced)
         try container.encode(pickerCursor, forKey: .pickerCursor)
         try container.encode(pickerCodex, forKey: .pickerCodex)
+        try container.encode(pickerClaude, forKey: .pickerClaude)
         try container.encode(pickerGrok, forKey: .pickerGrok)
         try container.encode(pickerGPT, forKey: .pickerGPT)
     }
@@ -231,6 +239,7 @@ public struct IslandPrefs: Codable, Equatable {
         }
         if let value = json["picker_cursor"] { next.pickerCursor = flag(value, fallback: base.pickerCursor) }
         if let value = json["picker_codex"] { next.pickerCodex = flag(value, fallback: base.pickerCodex) }
+        if let value = json["picker_claude"] { next.pickerClaude = flag(value, fallback: base.pickerClaude) }
         if let value = json["picker_grok"] { next.pickerGrok = flag(value, fallback: base.pickerGrok) }
         if let value = json["picker_gpt"] { next.pickerGPT = flag(value, fallback: base.pickerGPT) }
         return next

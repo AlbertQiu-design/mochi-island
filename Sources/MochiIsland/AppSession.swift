@@ -152,6 +152,21 @@ final class AppSession {
                 binaryURL: binary,
                 privacyAccepted: true
             )
+        case "copilot":
+            if action == "disconnect" {
+                return PassiveHooks.remove(fileURL: copilotHookURL, binaryURL: binary)
+            }
+            return PassiveHooks.installCopilot(directory: copilotHooksDirectory, binaryURL: binary, privacyAccepted: true)
+        case "opencode":
+            if action == "disconnect" {
+                return PassiveHooks.remove(fileURL: openCodePluginURL, binaryURL: binary)
+            }
+            return PassiveHooks.installOpenCode(pluginURL: openCodePluginURL, binaryURL: binary, privacyAccepted: true)
+        case "grok", "grok-bot":
+            if action == "disconnect" {
+                return PassiveHooks.remove(fileURL: grokHookURL, binaryURL: binary)
+            }
+            return PassiveHooks.installGrok(directory: grokHooksDirectory, binaryURL: binary, privacyAccepted: true)
         default:
             if action == "disconnect" {
                 return HookInstaller.remove(hooksURL: hooksURL, binaryURL: binary, tasksURL: tasksURL)
@@ -169,11 +184,17 @@ final class AppSession {
         let cursor = HookInstaller.status(hooksURL: hooksURL, binaryURL: binary, tasksURL: tasksURL)
         let codex = HookInstaller.codexStatus(configURL: codexConfigURL, hooksURL: codexHooksURL, binaryURL: binary)
         let claude = HookInstaller.claudeStatus(settingsURL: claudeSettingsURL, binaryURL: binary)
+        let copilot = PassiveHooks.copilotStatus(directory: copilotHooksDirectory, binaryURL: binary)
+        let opencode = PassiveHooks.openCodeStatus(pluginURL: openCodePluginURL, binaryURL: binary)
+        let grok = PassiveHooks.grokStatus(directory: grokHooksDirectory, binaryURL: binary)
         var payload = cursor.dictionary
         payload["agents"] = [
             "cursor": ["connected": cursor.connected],
             "codex": ["connected": codex.connected],
-            "claude": ["connected": claude.connected]
+            "claude": ["connected": claude.connected],
+            "copilot": ["connected": copilot.connected],
+            "opencode": ["connected": opencode.connected],
+            "grok": ["connected": grok.connected]
         ]
         return payload
     }
@@ -308,6 +329,26 @@ final class AppSession {
 
     private var claudeSettingsURL: URL {
         AppConfig.homeDirectory.appendingPathComponent(".claude/settings.json")
+    }
+
+    private var copilotHooksDirectory: URL {
+        PassiveHooks.copilotDirectory(home: AppConfig.homeDirectory, environment: ProcessInfo.processInfo.environment)
+    }
+
+    private var grokHooksDirectory: URL {
+        PassiveHooks.grokDirectory(home: AppConfig.homeDirectory)
+    }
+
+    private var grokHookURL: URL {
+        grokHooksDirectory.appendingPathComponent("mochi-island.json")
+    }
+
+    private var copilotHookURL: URL {
+        copilotHooksDirectory.appendingPathComponent("mochi-island.json")
+    }
+
+    private var openCodePluginURL: URL {
+        PassiveHooks.openCodePluginURL(home: AppConfig.homeDirectory)
     }
 
     private static func legacyFiles(_ relative: String) -> [URL] {
