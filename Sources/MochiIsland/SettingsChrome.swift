@@ -38,10 +38,15 @@ final class SettingsPanel: NSPanel {
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
         frameRect
     }
+
+    /// The titlebar must not add a strip above the glass. The frame is the glass.
+    override func contentRect(forFrameRect frameRect: NSRect) -> NSRect { frameRect }
+    override func frameRect(forContentRect contentRect: NSRect) -> NSRect { contentRect }
 }
 
 enum SettingsChromeMetrics {
-    static let titleRow: CGFloat = 28
+    /// Room for the traffic lights inside the rounded glass, above the tabs.
+    static let titleRow: CGFloat = 46
 }
 
 @MainActor
@@ -191,12 +196,7 @@ final class SettingsChrome: NSObject, NSWindowDelegate {
     }
 
     private func revealWindowButtons() {
-        buttonHost.placeButtons()
-        if let close = panel.standardWindowButton(.closeButton) {
-            close.target = self
-            close.action = #selector(dismissSettings(_:))
-        }
-        buttonHost.placeButtons()
+        buttonHost.install(window: panel, closeTarget: self, closeAction: #selector(dismissSettings(_:)))
     }
 
     private func place(capsule: NSRect, dock: String, host: NSWindow) {
@@ -567,29 +567,55 @@ struct SettingsRoot: View {
         .frame(width: SettingsChrome.width, height: SettingsChrome.height)
 }
 
-/// Holds close, minimize, and zoom inside the glass panel.
+/// Close, minimize, and zoom drawn inside the glass, clear of the rounded corner.
 final class SettingsButtonHost: NSView {
+    private var traffic: [NSButton] = []
+    private let topInset: CGFloat = 16
+    private let leading: CGFloat = 20
+
     override func layout() {
         super.layout()
         placeButtons()
     }
 
-    func placeButtons() {
-        guard let window else { return }
-        let kinds: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
-        var x: CGFloat = 16
-        for kind in kinds {
-            guard let button = window.standardWindowButton(kind) else { continue }
-            button.isHidden = false
-            button.isEnabled = true
-            if button.superview !== self {
-                button.removeFromSuperview()
+    func install(window: NSWindow, closeTarget: AnyObject, closeAction: Selector) {
+        let mask: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable]
+        if traffic.isEmpty {
+            for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+                guard let button = NSWindow.standardWindowButton(kind, for: mask) else { continue }
+                button.isHidden = false
+                button.isEnabled = true
                 addSubview(button)
+                traffic.append(button)
             }
-            let size = button.bounds.width > 4 ? button.bounds.size : NSSize(width: 14, height: 14)
-            let y = bounds.height - 9 - size.height
-            button.setFrameOrigin(NSPoint(x: x, y: y))
-            x += size.width + 6
+        }
+        for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            window.standardWindowButton(kind)?.isHidden = true
+        }
+        if let close = traffic.first {
+            close.target = closeTarget
+            close.action = closeAction
+        }
+        if traffic.count > 1 {
+            traffic[1].target = window
+            traffic[1].action = #selector(NSWindow.miniaturize(_:))
+        }
+        if traffic.count > 2 {
+            traffic[2].target = window
+            traffic[2].action = #selector(NSWindow.zoom(_:))
+        }
+        placeButtons()
+    }
+
+    func placeButtons() {
+        var x = leading
+        for button in traffic {
+            let fitted = button.fittingSize
+            let width = max(fitted.width, 14)
+            let height = max(fitted.height, 14)
+            let y = bounds.height - topInset - height
+            button.frame = NSRect(x: x, y: y, width: width, height: height)
+            x += width + 6
         }
     }
 }
@@ -603,7 +629,7 @@ final class SettingsHostingView<Content: View>: NSHostingView<Content> {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let local = convert(point, from: superview)
         let stripHeight = SettingsChromeMetrics.titleRow
-        let strip = NSRect(x: 0, y: bounds.height - stripHeight, width: 86, height: stripHeight)
+        let strip = NSRect(x: 0, y: bounds.height - stripHeight, width: 130, height: stripHeight)
         if strip.contains(local) {
             return nil
         }

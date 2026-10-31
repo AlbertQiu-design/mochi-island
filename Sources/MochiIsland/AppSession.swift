@@ -31,6 +31,14 @@ final class AppSession {
             active.formUnion(TaskReader.transcriptHints(now: now).map(\.id))
         }
         slots = slotDisk.load(activeTaskIDs: active)
+        repairInstalledHooks()
+    }
+
+    /// The marked Cursor hook must run the MochiHookCLI inside this app, not an older copy.
+    func repairInstalledHooks() {
+        let binary = hookBinary()
+        guard FileManager.default.isExecutableFile(atPath: binary.path) else { return }
+        HookInstaller.retargetCursor(hooksURL: hooksURL, binaryURL: binary)
     }
 
     var currentPrefs: IslandPrefs { prefs }

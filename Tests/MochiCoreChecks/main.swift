@@ -1010,6 +1010,50 @@ func CodexAndClaudeHooksInstallMarkedCommands() throws {
     check(CodexFeatureFlag.isEnabled(in: ambiguous) == false)
 }
 
+func HookRetargetPointsAtTheOpenApp() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-retarget-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let current = directory.appendingPathComponent("MochiHookCLI")
+    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: current)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: current.path)
+    let hooks = directory.appendingPathComponent("hooks.json")
+    let stale = "/Users/albertsmacbookpro/Projects/PythonTemplate/island/MochiIsland.app/Contents/MacOS/MochiHookCLI"
+    let raw: [String: Any] = [
+        "version": 1,
+        "hooks": [
+            "beforeSubmitPrompt": [[
+                "command": stale,
+                AppConfig.hookMarker: AppConfig.hookVersion
+            ]],
+            "stop": [["command": "/bin/echo keep"]]
+        ]
+    ]
+    try JSONSerialization.data(withJSONObject: raw).write(to: hooks)
+    check(HookInstaller.retargetCursor(hooksURL: hooks, binaryURL: current))
+    let saved = try JSONSerialization.jsonObject(with: Data(contentsOf: hooks)) as? [String: Any]
+    let entries = ((saved?["hooks"] as? [String: Any])?["beforeSubmitPrompt"] as? [[String: Any]]) ?? []
+    check(entries.first?["command"] as? String == current.path)
+    let stop = ((saved?["hooks"] as? [String: Any])?["stop"] as? [[String: Any]]) ?? []
+    check(stop.first?["command"] as? String == "/bin/echo keep")
+    let outcome = HookEvents.interpret(sourceFlag: nil, payload: [
+        "hook_event_name": "beforeSubmitPrompt",
+        "conversation_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        "prompt": "do not keep this"
+    ])
+    check(outcome?.status == "running")
+    check(outcome?.source == "cursor")
+    var tasks: [String: Any] = [:]
+    HookEvents.merge(outcome!, into: &tasks, now: 5)
+    let item = tasks[outcome!.id] as? [String: Any]
+    check(item?["prompt"] == nil)
+    check(item?["status"] as? String == "running")
+    let rows = AgentIconList.rows([
+        AgentIconCandidate(id: outcome!.id, source: "cursor", title: "Cursor", status: "running", read: false, updated: 5)
+    ])
+    check(rows.count == 1)
+    check(rows[0].source == "cursor")
+}
+
 func LiveHooksFixWhenAsked() {
         guard let binary = ProcessInfo.processInfo.environment["MOCHI_FIX_LIVE_HOOKS"], !binary.isEmpty else { return }
         let cursor = AppConfig.cursorDirectory
@@ -1056,5 +1100,6 @@ SelectingKeepsOnlyKnownIds()
 NewWaitSelectsOnlyAfterTheFirstSnapshot()
 try SubmittedChatKeepsTheAgentAndDropsThePrompt()
 try CodexAndClaudeHooksInstallMarkedCommands()
+try HookRetargetPointsAtTheOpenApp()
 LiveHooksFixWhenAsked()
 print("MochiCore checks passed")

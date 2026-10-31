@@ -461,7 +461,7 @@ final class KittenShell: NSObject {
             }
         }
         let previousSource = model.rows.first { $0.id == model.selected }?.source
-        let candidates: [AgentIconCandidate] = slots.compactMap { raw in
+        var candidates: [AgentIconCandidate] = slots.compactMap { raw in
             let id = string(raw["id"])
             guard !id.isEmpty else { return nil }
             let source = AgentLaunch.normalize(string(raw["source"]))
@@ -491,6 +491,27 @@ final class KittenShell: NSObject {
                 read: bool(raw["read"]),
                 updated: updated > 0 ? updated : created
             )
+        }
+        var seenIDs = Set(candidates.map(\.id))
+        for task in tasks {
+            let id = string(task["id"])
+            let status = string(task["status"])
+            guard !id.isEmpty, !seenIDs.contains(id) else { continue }
+            guard status == "running" || status == "wait" || status == "done" || status == "fail" else { continue }
+            let source = AgentLaunch.normalize(string(task["source"]))
+            if source == "mochi" { continue }
+            seenIDs.insert(id)
+            candidates.append(AgentIconCandidate(
+                id: id,
+                source: source,
+                title: {
+                    let title = string(task["title"])
+                    return title.isEmpty ? SlotFace.displayName(for: source) : title
+                }(),
+                status: status,
+                read: false,
+                updated: number(task["updated"])
+            ))
         }
         model.rows = AgentIconList.rows(candidates, holding: pinnedIDs).map { row in
             KittenRow(

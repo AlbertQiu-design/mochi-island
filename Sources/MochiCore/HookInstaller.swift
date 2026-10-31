@@ -105,17 +105,47 @@ public enum HookInstaller {
         return status(hooksURL: hooksURL, binaryURL: binaryURL, tasksURL: tasksURL)
     }
 
+    /// Connected only when our marked hook runs this app's MochiHookCLI.
     private static func isInstalled(hooksURL: URL, binaryURL: URL) -> Bool {
+        guard FileManager.default.isExecutableFile(atPath: binaryURL.path) else { return false }
         let hooks = read(hooksURL)["hooks"] as? [String: Any] ?? [:]
-        for raw in hooks.values {
-            for entry in raw as? [[String: Any]] ?? [] where isOurs(entry) {
-                let command = entry["command"] as? String ?? ""
-                if command == binaryURL.path || command.contains("MochiHookCLI") {
-                    return FileManager.default.isExecutableFile(atPath: binaryURL.path) || FileManager.default.isExecutableFile(atPath: command)
-                }
-            }
+        let entries = hooks["beforeSubmitPrompt"] as? [[String: Any]] ?? []
+        return entries.contains { entry in
+            isOurs(entry) && commandPoints(at: binaryURL, command: entry["command"] as? String ?? "")
         }
-        return false
+    }
+
+    /// Rewrites our Cursor hook commands onto this app's binary. Other hooks stay.
+    @discardableResult
+    public static func retargetCursor(hooksURL: URL, binaryURL: URL) -> Bool {
+        guard FileManager.default.isExecutableFile(atPath: binaryURL.path) else { return false }
+        var root = read(hooksURL)
+        guard var hooks = root["hooks"] as? [String: Any], !hooks.isEmpty else { return false }
+        var changed = false
+        for (event, raw) in hooks {
+            guard var entries = raw as? [[String: Any]] else { continue }
+            for index in entries.indices where isOurs(entries[index]) {
+                let command = entries[index]["command"] as? String ?? ""
+                if commandPoints(at: binaryURL, command: command) { continue }
+                entries[index]["command"] = binaryURL.path
+                entries[index][AppConfig.hookMarker] = AppConfig.hookVersion
+                changed = true
+            }
+            hooks[event] = entries
+        }
+        guard changed else { return isInstalled(hooksURL: hooksURL, binaryURL: binaryURL) }
+        root["hooks"] = hooks
+        backup(hooksURL)
+        do {
+            try AtomicFile.writeJSON(root, to: hooksURL)
+        } catch {
+            return false
+        }
+        return isInstalled(hooksURL: hooksURL, binaryURL: binaryURL)
+    }
+
+    private static func commandPoints(at binaryURL: URL, command: String) -> Bool {
+        command == binaryURL.path || command.hasPrefix(binaryURL.path + " ")
     }
 
     private static func isOurs(_ entry: [String: Any]) -> Bool {
