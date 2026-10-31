@@ -20,6 +20,10 @@
 		<data>
 		cRVZu5nMqM/ewMV1JEu2BbWMoKc=
 		</data>
+		<key>Resources/Web/pets/agent-claude.svg</key>
+		<data>
+		O/J68ezztGr9xowS44LfeCiND38=
+		</data>
 		<key>Resources/Web/pets/agent-codex.svg</key>
 		<data>
 		4RuXO/uaS8Sm7Sc/JTJmmRaWRMM=
@@ -135,10 +139,10 @@
 		<dict>
 			<key>cdhash</key>
 			<data>
-			qN9iOZDl27uAsLqxcGZ9wFGdjmM=
+			Vb8UTGGyoccC1r/LAuBxdsbYFnM=
 			</data>
 			<key>requirement</key>
-			<string>cdhash H"a8df623990e5dbbb80b0bab170667dc0519d8e63" or cdhash H"e7fbdf7b27506d7c2e26d0e9cba9929942087759"</string>
+			<string>cdhash H"55bf144c61b2a1c702d6bfcb02e07176c6d81673" or cdhash H"90552e1563ecf6eb0d1fe6d7b3fc150bb3341fb7"</string>
 		</dict>
 		<key>Resources/AppIcon.icns</key>
 		<dict>
@@ -166,6 +170,13 @@
 			<key>hash2</key>
 			<data>
 			e1zusS4izUb1ZzJ7YJF7lMnR7JViZLOljZMXUzXUDG8=
+			</data>
+		</dict>
+		<key>Resources/Web/pets/agent-claude.svg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			Uvhx1Qj7LSHGCEbBDQYs9ZCQNmAp84Mh8pxgIdjKBck=
 			</data>
 		</dict>
 		<key>Resources/Web/pets/agent-codex.svg</key>
