@@ -16,8 +16,31 @@ public struct IslandPrefs: Codable, Equatable {
     public var bubbleScale: Double
     public var cursorPrivacyAccepted: Bool
     public var scanTranscripts: Bool
+    public var dock: String
+    public var kittenX: Double
+    public var kittenY: Double
+    public var kittenPlaced: Bool
+    public var pickerCursor: Bool
+    public var pickerCodex: Bool
+    public var pickerClaude: Bool
+    public var pickerGemini: Bool
+    public var pickerGrok: Bool
+    public var pickerGPT: Bool
 
     public static let soundIDs = ["boop", "chirp", "mew", "pop", "twinkle"]
+    public static let docks = ["left", "right"]
+    public static let pickerOrder = ["cursor", "codex", "claude", "gemini", "grok-bot", "gpt"]
+
+    public var pickerSources: [String] {
+        var sources: [String] = []
+        if pickerCursor { sources.append("cursor") }
+        if pickerCodex { sources.append("codex") }
+        if pickerClaude { sources.append("claude") }
+        if pickerGemini { sources.append("gemini") }
+        if pickerGrok { sources.append("grok-bot") }
+        if pickerGPT { sources.append("gpt") }
+        return sources
+    }
 
     public init(
         dx: Double = 0,
@@ -34,7 +57,17 @@ public struct IslandPrefs: Codable, Equatable {
         petScale: Double = 1,
         bubbleScale: Double = 1,
         cursorPrivacyAccepted: Bool = false,
-        scanTranscripts: Bool = false
+        scanTranscripts: Bool = false,
+        dock: String = "right",
+        kittenX: Double = 1,
+        kittenY: Double = 0.5,
+        kittenPlaced: Bool = false,
+        pickerCursor: Bool = true,
+        pickerCodex: Bool = true,
+        pickerClaude: Bool = true,
+        pickerGemini: Bool = true,
+        pickerGrok: Bool = true,
+        pickerGPT: Bool = true
     ) {
         self.dx = dx
         self.dy = dy
@@ -51,6 +84,19 @@ public struct IslandPrefs: Codable, Equatable {
         self.bubbleScale = bubbleScale
         self.cursorPrivacyAccepted = cursorPrivacyAccepted
         self.scanTranscripts = scanTranscripts
+        self.dock = Self.docks.contains(dock) ? dock : "right"
+        self.kittenX = Self.unit(kittenX)
+        self.kittenY = Self.unit(kittenY)
+        self.kittenPlaced = kittenPlaced
+        self.pickerCursor = pickerCursor
+        self.pickerCodex = pickerCodex
+        self.pickerClaude = pickerClaude
+        self.pickerGemini = pickerGemini
+        self.pickerGrok = pickerGrok
+        self.pickerGPT = pickerGPT
+        if kittenPlaced {
+            self.dock = self.kittenX < 0.5 ? "left" : "right"
+        }
     }
 
     public var dictionary: [String: Any] {
@@ -67,8 +113,93 @@ public struct IslandPrefs: Codable, Equatable {
             "sound": sound,
             "look": look,
             "pet_scale": petScale,
-            "bubble_scale": bubbleScale
+            "bubble_scale": bubbleScale,
+            "dock": dock,
+            "kitten_x": kittenX,
+            "kitten_y": kittenY,
+            "kitten_placed": kittenPlaced,
+            "picker_cursor": pickerCursor,
+            "picker_codex": pickerCodex,
+            "picker_claude": pickerClaude,
+            "picker_gemini": pickerGemini,
+            "picker_grok": pickerGrok,
+            "picker_gpt": pickerGPT
         ]
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case dx, dy, bubbleDx, bubbleDy, fill, text, stroke, cardFill, cardStroke
+        case sound, look, petScale, bubbleScale, cursorPrivacyAccepted, scanTranscripts, dock
+        case kittenX = "kitten_x"
+        case kittenY = "kitten_y"
+        case kittenPlaced = "kitten_placed"
+        case pickerCursor = "picker_cursor"
+        case pickerCodex = "picker_codex"
+        case pickerClaude = "picker_claude"
+        case pickerGemini = "picker_gemini"
+        case pickerGrok = "picker_grok"
+        case pickerGPT = "picker_gpt"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let parsed = IslandPrefs(
+            dx: try container.decodeIfPresent(Double.self, forKey: .dx) ?? 0,
+            dy: try container.decodeIfPresent(Double.self, forKey: .dy) ?? 0,
+            bubbleDx: try container.decodeIfPresent(Double.self, forKey: .bubbleDx) ?? 0,
+            bubbleDy: try container.decodeIfPresent(Double.self, forKey: .bubbleDy) ?? 0,
+            fill: try container.decodeIfPresent(String.self, forKey: .fill) ?? "#ffffff",
+            text: try container.decodeIfPresent(String.self, forKey: .text) ?? "#241f1c",
+            stroke: try container.decodeIfPresent(String.self, forKey: .stroke) ?? "#2c2926",
+            cardFill: try container.decodeIfPresent(String.self, forKey: .cardFill) ?? "#fffdf8",
+            cardStroke: try container.decodeIfPresent(String.self, forKey: .cardStroke) ?? "#2c2926",
+            sound: try container.decodeIfPresent(String.self, forKey: .sound) ?? "boop",
+            look: try container.decodeIfPresent(String.self, forKey: .look) ?? "mochi",
+            petScale: try container.decodeIfPresent(Double.self, forKey: .petScale) ?? 1,
+            bubbleScale: try container.decodeIfPresent(Double.self, forKey: .bubbleScale) ?? 1,
+            cursorPrivacyAccepted: try container.decodeIfPresent(Bool.self, forKey: .cursorPrivacyAccepted) ?? false,
+            scanTranscripts: try container.decodeIfPresent(Bool.self, forKey: .scanTranscripts) ?? false,
+            dock: try container.decodeIfPresent(String.self, forKey: .dock) ?? "right",
+            kittenX: try container.decodeIfPresent(Double.self, forKey: .kittenX) ?? 1,
+            kittenY: try container.decodeIfPresent(Double.self, forKey: .kittenY) ?? 0.5,
+            kittenPlaced: try container.decodeIfPresent(Bool.self, forKey: .kittenPlaced) ?? false,
+            pickerCursor: try container.decodeIfPresent(Bool.self, forKey: .pickerCursor) ?? true,
+            pickerCodex: try container.decodeIfPresent(Bool.self, forKey: .pickerCodex) ?? true,
+            pickerClaude: try container.decodeIfPresent(Bool.self, forKey: .pickerClaude) ?? true,
+            pickerGemini: try container.decodeIfPresent(Bool.self, forKey: .pickerGemini) ?? true,
+            pickerGrok: try container.decodeIfPresent(Bool.self, forKey: .pickerGrok) ?? true,
+            pickerGPT: try container.decodeIfPresent(Bool.self, forKey: .pickerGPT) ?? true
+        )
+        self = parsed
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(dx, forKey: .dx)
+        try container.encode(dy, forKey: .dy)
+        try container.encode(bubbleDx, forKey: .bubbleDx)
+        try container.encode(bubbleDy, forKey: .bubbleDy)
+        try container.encode(fill, forKey: .fill)
+        try container.encode(text, forKey: .text)
+        try container.encode(stroke, forKey: .stroke)
+        try container.encode(cardFill, forKey: .cardFill)
+        try container.encode(cardStroke, forKey: .cardStroke)
+        try container.encode(sound, forKey: .sound)
+        try container.encode(look, forKey: .look)
+        try container.encode(petScale, forKey: .petScale)
+        try container.encode(bubbleScale, forKey: .bubbleScale)
+        try container.encode(cursorPrivacyAccepted, forKey: .cursorPrivacyAccepted)
+        try container.encode(scanTranscripts, forKey: .scanTranscripts)
+        try container.encode(dock, forKey: .dock)
+        try container.encode(kittenX, forKey: .kittenX)
+        try container.encode(kittenY, forKey: .kittenY)
+        try container.encode(kittenPlaced, forKey: .kittenPlaced)
+        try container.encode(pickerCursor, forKey: .pickerCursor)
+        try container.encode(pickerCodex, forKey: .pickerCodex)
+        try container.encode(pickerClaude, forKey: .pickerClaude)
+        try container.encode(pickerGemini, forKey: .pickerGemini)
+        try container.encode(pickerGrok, forKey: .pickerGrok)
+        try container.encode(pickerGPT, forKey: .pickerGPT)
     }
 
     public static func parse(_ json: [String: Any], base: IslandPrefs = IslandPrefs()) -> IslandPrefs {
@@ -97,7 +228,34 @@ public struct IslandPrefs: Codable, Equatable {
         if let scan = json["scan_transcripts"] as? Bool {
             next.scanTranscripts = scan
         }
+        if let dock = json["dock"] as? String, docks.contains(dock) {
+            next.dock = dock
+        }
+        if json["kitten_x"] != nil {
+            next.kittenX = unit(number(json["kitten_x"], fallback: base.kittenX))
+        }
+        if json["kitten_y"] != nil {
+            next.kittenY = unit(number(json["kitten_y"], fallback: base.kittenY))
+        }
+        if let placed = json["kitten_placed"] as? Bool {
+            next.kittenPlaced = placed
+        } else if let placed = json["kitten_placed"] as? NSNumber {
+            next.kittenPlaced = placed.boolValue
+        }
+        if next.kittenPlaced {
+            next.dock = next.kittenX < 0.5 ? "left" : "right"
+        }
+        if let value = json["picker_cursor"] { next.pickerCursor = flag(value, fallback: base.pickerCursor) }
+        if let value = json["picker_codex"] { next.pickerCodex = flag(value, fallback: base.pickerCodex) }
+        if let value = json["picker_claude"] { next.pickerClaude = flag(value, fallback: base.pickerClaude) }
+        if let value = json["picker_gemini"] { next.pickerGemini = flag(value, fallback: base.pickerGemini) }
+        if let value = json["picker_grok"] { next.pickerGrok = flag(value, fallback: base.pickerGrok) }
+        if let value = json["picker_gpt"] { next.pickerGPT = flag(value, fallback: base.pickerGPT) }
         return next
+    }
+
+    private static func unit(_ value: Double) -> Double {
+        min(1, max(0, value))
     }
 
     private static func number(_ value: Any?, fallback: Double) -> Double {
@@ -111,6 +269,12 @@ public struct IslandPrefs: Codable, Equatable {
         let number = number(value, fallback: fallback)
         if number == 0 { return 1 }
         return min(2, max(0.5, number))
+    }
+
+    private static func flag(_ value: Any, fallback: Bool) -> Bool {
+        if let value = value as? Bool { return value }
+        if let value = value as? NSNumber { return value.boolValue }
+        return fallback
     }
 
     private static func hex(_ value: Any?) -> String? {

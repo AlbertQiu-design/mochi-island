@@ -26,8 +26,9 @@ final class GlassPlate {
         let effect = NSGlassEffectView(frame: .zero)
         effect.style = .regular
         effect.tintColor = nil
-        if #available(macOS 27.0, *) {
-            effect.effectIsInteractive = true
+        let interactive = NSSelectorFromString("setEffectIsInteractive:")
+        if effect.responds(to: interactive) {
+            effect.setValue(true, forKey: "effectIsInteractive")
         }
         let label = NSTextField(wrappingLabelWithString: "")
         label.alignment = .center
@@ -110,17 +111,24 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     private let taskWatch = TaskFileWatch(
         fileURL: AppConfig.cursorDirectory.appendingPathComponent("mochi-island-tasks.json")
     )
+    private var taskPoll: Timer?
     private var taskStamp = ""
     private var reloadTries = 0
     private var glassPlates: [GlassPlate] = []
     private var hotRects: [NSRect] = []
     private var localMonitor: Any?
     private var globalMonitor: Any?
+    private let capsule = KittenShell()
+    private var primedAlerts = false
+    private var seenAlertKeys: Set<String> = []
+    private let settings = SettingsChrome()
 
     func start() {
         configurePanel()
         configureWebView()
         applyFrame()
+        configureCapsule()
+        configureSettings()
         startMousePassthrough()
         panel.orderFrontRegardless()
         loadPage()
@@ -129,6 +137,13 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
                 self?.deliverTasksIfChanged()
             }
         }
+        let poll = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.deliverTasksIfChanged()
+            }
+        }
+        taskPoll = poll
+        RunLoop.main.add(poll, forMode: .common)
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(screenChanged),
@@ -187,6 +202,7 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
         case "savePrefs":
             session.replacePrefs(body)
             retintGlass()
+            refreshCapsule()
         case "hotRects":
             hotRects = Self.parseRects(body["rects"], windowHeight: panel.frame.height)
             syncMousePassthrough()
@@ -194,23 +210,177 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
             syncGlass(body["rects"])
         case "getState":
             reply(requestID, session.statePayload())
+            deliverTasksIfChanged()
         case "play":
             reply(requestID, session.play())
         case "getTasks":
             reply(requestID, session.tasksPayload())
+            deliverTasksIfChanged()
         case "cursorLink":
             reply(requestID, session.linkPayload(
+                agent: body["agent"] as? String ?? "cursor",
                 action: body["linkAction"] as? String ?? "",
                 acknowledged: body["acknowledged"] as? Bool ?? false
             ))
         case "cursorChoice":
-            reply(requestID, session.choicePayload(body))
+            let result = session.choicePayload(body)
+            reply(requestID, result)
+            let kind = body["kind"] as? String ?? ""
+            let option = body["option_id"] as? String ?? ""
+            if (result["ok"] as? Bool) != false,
+               ReplyWriter.closesBubble(kind: kind, optionID: option) {
+                capsule.hideCard()
+            }
+        case "openAgent":
+            reply(requestID, session.openAgent(
+                source: body["source"] as? String ?? "",
+                taskID: body["id"] as? String ?? ""
+            ))
         case "setScan":
             session.setScanTranscripts(body["enabled"] as? Bool ?? false)
             reply(requestID, ["ok": true, "scanTranscripts": session.currentPrefs.scanTranscripts])
+        case "createSlot":
+            let created = session.createSlot(source: body["source"] as? String ?? "")
+            refreshCapsule()
+            reply(requestID, created)
         default:
             break
         }
+    }
+
+    private func configureCapsule() {
+        capsule.attach(to: panel)
+        capsule.apply(prefs: session.currentPrefs, force: true)
+        capsule.onSettings = { [weak self] in
+            self?.toggleSettings()
+        }
+        capsule.onChoice = { [weak self] body in
+            guard let self else { return [:] }
+            return self.session.choicePayload(body)
+        }
+        capsule.onOpenAgent = { [weak self] source, taskID in
+            _ = self?.session.openAgent(source: source, taskID: taskID)
+        }
+        capsule.onOpenApp = { [weak self] source in
+            _ = self?.session.openAgent(source: source, taskID: "")
+        }
+        capsule.onPosition = { [weak self] x, y in
+            guard let self else { return }
+            self.session.saveKittenPosition(x: x, y: y)
+            if self.settings.isVisible {
+                self.settings.reposition(capsule: self.capsule.hitFrame, dock: self.session.currentPrefs.dock, host: self.panel)
+            }
+        }
+        capsule.onRead = { [weak self] id in
+            self?.session.markRead(id)
+        }
+        capsule.onRetire = { [weak self] in
+            guard let self else { return }
+            self.session.retireReadDone()
+            self.refreshCapsule()
+        }
+        capsule.protectedFrames = { [weak self] in
+            guard let self, self.settings.isVisible else { return [] }
+            return [self.settings.panel.frame]
+        }
+        refreshCapsule()
+    }
+
+    private func configureSettings() {
+        settings.attach(to: panel)
+        settings.onPrefs = { [weak self] json in
+            guard let self else { return }
+            self.session.replacePrefs(json)
+            self.refreshCapsule()
+            self.injectPageState()
+            self.capsule.apply(prefs: self.session.currentPrefs, force: true)
+            // Size changes spring the kitten. The settings window stays where it was opened.
+        }
+        settings.onLink = { [weak self] agent, action, acknowledged in
+            guard let self else { return [:] }
+            return self.session.linkPayload(agent: agent, action: action, acknowledged: acknowledged)
+        }
+        settings.onScan = { [weak self] enabled in
+            self?.session.setScanTranscripts(enabled)
+        }
+        settings.onReset = { [weak self] in
+            guard let self else { return }
+            self.session.resetKittenPosition()
+            self.capsule.apply(prefs: self.session.currentPrefs, force: true)
+            if self.settings.isVisible {
+                self.settings.reposition(capsule: self.capsule.hitFrame, dock: self.session.currentPrefs.dock, host: self.panel)
+            }
+        }
+        settings.load(prefs: session.currentPrefs, link: session.linkPayload(agent: "cursor", action: "status", acknowledged: false))
+    }
+
+    private func toggleSettings() {
+        settings.load(prefs: session.currentPrefs, link: session.linkPayload(agent: "cursor", action: "status", acknowledged: false))
+        settings.toggle(capsule: capsule.hitFrame, dock: session.currentPrefs.dock, host: panel)
+    }
+
+    func revealSettings(tab: SettingsTab = .general) {
+        settings.load(prefs: session.currentPrefs, link: session.linkPayload(agent: "cursor", action: "status", acknowledged: false))
+        settings.select(tab)
+        if !settings.isVisible {
+            settings.toggle(capsule: capsule.hitFrame, dock: session.currentPrefs.dock, host: panel)
+        }
+    }
+
+    private func refreshCapsule() {
+        let state = session.statePayload()
+        let tasks = session.tasksPayload()
+        let selected = state["selected"] as? String ?? ""
+        capsule.apply(prefs: session.currentPrefs)
+        capsule.sync(
+            slots: state["slots"] as? [[String: Any]] ?? [],
+            selected: selected,
+            tasks: tasks,
+            dock: session.currentPrefs.dock
+        )
+        considerAlerts(tasks: tasks, slots: state["slots"] as? [[String: Any]] ?? [])
+        publishCapsule()
+    }
+
+    private func considerAlerts(tasks: [[String: Any]], slots: [[String: Any]]) {
+        var read: [String: Bool] = [:]
+        for slot in slots {
+            let id = slot["id"] as? String ?? ""
+            guard !id.isEmpty else { continue }
+            if let flag = slot["read"] as? Bool {
+                read[id] = flag
+            } else if let flag = slot["read"] as? NSNumber {
+                read[id] = flag.boolValue
+            }
+        }
+        var pending: [(id: String, updated: Double, status: String)] = []
+        for task in tasks {
+            let id = task["id"] as? String ?? ""
+            let status = task["status"] as? String ?? ""
+            guard !id.isEmpty, status == "wait" || status == "done" || status == "fail" else { continue }
+            if read[id] == true { continue }
+            let updated = (task["updated"] as? NSNumber)?.doubleValue ?? (task["updated"] as? Double) ?? 0
+            pending.append((id, updated, status))
+        }
+        let keys = Set(pending.map { "\($0.id)|\($0.status)" })
+        if !primedAlerts {
+            primedAlerts = true
+            seenAlertKeys = keys
+            return
+        }
+        let fresh = pending.filter { !seenAlertKeys.contains("\($0.id)|\($0.status)") }
+        seenAlertKeys.formUnion(keys)
+        guard let newest = fresh.max(by: { $0.updated < $1.updated }) else { return }
+        capsule.presentAlert(id: newest.id)
+    }
+
+    private func publishCapsule() {
+        let payload = Self.jsonString(capsule.chromePayload(in: panel))
+        tellPage("window.applyCapsuleChrome && window.applyCapsuleChrome(\(payload));")
+    }
+
+    private func tellPage(_ script: String) {
+        webView?.evaluateJavaScript(script, completionHandler: nil)
     }
 
     private func reply(_ id: String, _ object: Any) {
@@ -249,15 +419,17 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
             "window.pushTasks && window.pushTasks(\(tasks), \(state));",
             completionHandler: nil
         )
+        refreshCapsule()
     }
 
     private func injectPageState() {
         let layout = Self.screenLayoutJSON()
         let payload = Self.jsonString(session.currentPrefs.dictionary)
         webView.evaluateJavaScript(
-            "window.applyScreenLayout && window.applyScreenLayout(\(layout)); window.applyPrefs && window.applyPrefs(\(payload));",
+            "window.__mochiNativeCard = true; window.applyScreenLayout && window.applyScreenLayout(\(layout)); window.applyPrefs && window.applyPrefs(\(payload));",
             completionHandler: nil
         )
+        refreshCapsule()
     }
 
     private func retryLoad() {
@@ -278,6 +450,14 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     @objc private func screenChanged() {
         applyFrame()
         injectPageState()
+        refreshCapsule()
+        if settings.isVisible {
+            settings.reposition(
+                capsule: capsule.hitFrame,
+                dock: session.currentPrefs.dock,
+                host: panel
+            )
+        }
     }
 
     private func applyFrame() {
@@ -304,13 +484,18 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     }
 
     private func syncMousePassthrough() {
-        if hotRects.isEmpty {
-            panel.ignoresMouseEvents = true
+        let screenMouse = NSEvent.mouseLocation
+        settings.panel.ignoresMouseEvents = !settings.isVisible
+        capsule.panel.ignoresMouseEvents = capsule.ignoresPointer(at: screenMouse)
+        if capsule.containsScreenPoint(screenMouse) {
+            panel.ignoresMouseEvents = false
             return
         }
-        let mouse = panel.convertPoint(fromScreen: NSEvent.mouseLocation)
-        let hit = hotRects.contains { $0.insetBy(dx: -10, dy: -10).contains(mouse) }
-        panel.ignoresMouseEvents = !hit
+        if let bubble = capsule.interactiveBubbleFrame, bubble.insetBy(dx: -4, dy: -4).contains(screenMouse) {
+            panel.ignoresMouseEvents = false
+            return
+        }
+        panel.ignoresMouseEvents = true
     }
 
     private static func parseRects(_ value: Any?, windowHeight: CGFloat) -> [NSRect] {
@@ -436,7 +621,12 @@ final class IslandController: NSObject, WKScriptMessageHandler, WKNavigationDele
     }
 
     private static func jsonString(_ object: Any) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: object),
+        if let text = object as? String {
+            let data = (try? JSONEncoder().encode(text)) ?? Data()
+            return String(data: data, encoding: .utf8) ?? "\"\""
+        }
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object),
               let text = String(data: data, encoding: .utf8) else {
             return "{}"
         }
@@ -454,12 +644,26 @@ final class Runtime: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
             return
         }
-        try? SMAppService.mainApp.register()
         if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
            let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
         }
         island.start()
+        if CommandLine.arguments.contains("--show-settings") {
+            let raw = CommandLine.arguments
+                .first(where: { $0.hasPrefix("--settings-tab=") })?
+                .split(separator: "=", maxSplits: 1)
+                .last
+                .map(String.init) ?? "general"
+            let tab: SettingsTab
+            switch raw {
+            case "kitten", "looks": tab = .kitten
+            case "sound": tab = .sound
+            case "agents", "links": tab = .agents
+            default: tab = .general
+            }
+            island.revealSettings(tab: tab)
+        }
     }
 
     private static func claimSingleInstance() -> Bool {
@@ -481,6 +685,13 @@ final class Runtime: NSObject, NSApplicationDelegate {
 @main
 enum MochiIsland {
     static func main() {
+        if CommandLine.arguments.contains("--measure-latency") {
+            let app = NSApplication.shared
+            app.setActivationPolicy(.accessory)
+            app.delegate = LatencyHarness.shared
+            app.run()
+            return
+        }
         let app = NSApplication.shared
         app.delegate = Runtime.shared
         app.setActivationPolicy(.regular)

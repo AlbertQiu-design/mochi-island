@@ -11,6 +11,7 @@ public struct CursorTask: Equatable {
     public var allowMultiple: Bool
     public var questionID: String
     public var requestID: String
+    public var source: String
     public var updated: Double
 
     public init(
@@ -24,6 +25,7 @@ public struct CursorTask: Equatable {
         allowMultiple: Bool = false,
         questionID: String = "",
         requestID: String = "",
+        source: String = "cursor",
         updated: Double = 0
     ) {
         self.id = id
@@ -36,6 +38,7 @@ public struct CursorTask: Equatable {
         self.allowMultiple = allowMultiple
         self.questionID = questionID
         self.requestID = requestID
+        self.source = AgentLaunch.normalize(source)
         self.updated = updated
     }
 
@@ -44,13 +47,15 @@ public struct CursorTask: Equatable {
             "id": id,
             "title": title,
             "status": status,
+            "source": source,
             "kind": kind,
             "prompt": prompt,
             "detail": detail,
             "options": options,
             "allow_multiple": allowMultiple,
             "question_id": questionID,
-            "request_id": requestID
+            "request_id": requestID,
+            "updated": updated
         ]
     }
 }
@@ -83,10 +88,12 @@ public enum TaskReader {
               let tasks = root["tasks"] as? [String: Any] else {
             return []
         }
+        let answered = Set((root["answered"] as? [String]) ?? [])
         var visible: [CursorTask] = []
         for (key, raw) in tasks {
             guard let item = raw as? [String: Any] else { continue }
             var status = item["status"] as? String ?? "running"
+            if status == "closed" { continue }
             if !["running", "wait", "done", "fail"].contains(status) {
                 status = "running"
             }
@@ -103,17 +110,59 @@ public enum TaskReader {
                 guard !label.isEmpty else { return nil }
                 return ["id": oid, "label": label]
             }
+            let optionIDs = options.map { $0["id"] ?? "" }
+            let kindRaw = item["kind"] as? String ?? ""
+            let requestID = item["request_id"] as? String ?? ""
+            let source = AgentLaunch.normalize(item["source"] as? String)
+            let permission = PermissionCopy.isPermission(kind: kindRaw, status: status, optionIDs: optionIDs)
+            let answeredWait = permission && status == "wait" && !requestID.isEmpty && answered.contains(requestID)
+            if answeredWait { status = "running" }
+            let rawPrompt = item["prompt"] as? String ?? ""
+            let rawCommand = item["command"] as? String ?? ""
+            var title = item["title"] as? String ?? ""
+            if (!rawPrompt.isEmpty && title == rawPrompt) || (!rawCommand.isEmpty && title == rawCommand) {
+                title = ""
+            }
+            let rawDetail = item["detail"] as? String ?? ""
+            let agent = SlotFace.displayName(for: source)
+            let shownKind: String
+            let shownDetail: String
+            let shownOptions: [[String: String]]
+            if permission && answeredWait {
+                title = agent
+                shownKind = ""
+                shownDetail = ""
+                shownOptions = []
+            } else if permission {
+                title = PermissionCopy.actionKind(detail: rawDetail, title: title)
+                shownKind = "permission"
+                shownDetail = ""
+                shownOptions = options
+            } else {
+                title = PermissionCopy.visibleTitle(
+                    kind: "",
+                    status: status,
+                    title: title.isEmpty ? agent : title,
+                    detail: rawDetail,
+                    agent: agent,
+                    optionIDs: []
+                )
+                shownKind = includePrompts ? kindRaw : ""
+                shownDetail = includePrompts ? PermissionCopy.visibleDetail(kind: "", status: status, detail: rawDetail, optionIDs: []) : ""
+                shownOptions = options
+            }
             visible.append(CursorTask(
                 id: id,
-                title: item["title"] as? String ?? "Cursor task",
+                title: title,
                 status: status,
-                kind: includePrompts ? (item["kind"] as? String ?? "") : "",
-                prompt: includePrompts ? (item["prompt"] as? String ?? "") : "",
-                detail: includePrompts ? (item["detail"] as? String ?? "") : "",
-                options: options,
+                kind: shownKind,
+                prompt: "",
+                detail: shownDetail,
+                options: shownOptions,
                 allowMultiple: item["allow_multiple"] as? Bool ?? false,
                 questionID: item["question_id"] as? String ?? "",
                 requestID: item["request_id"] as? String ?? "",
+                source: AgentLaunch.normalize(item["source"] as? String),
                 updated: updated
             ))
         }
@@ -145,17 +194,59 @@ public enum TaskReader {
 
 public enum ReplyWriter {
     public static func writePermission(id: String, requestID: String, action: String, to url: URL) throws {
-        let allowed = action.lowercased()
-        guard allowed == "allow" || allowed == "deny" else {
-            throw ReplyError.unsupported
+        try writeChoice(id: id, requestID: requestID, action: action, kind: "permission", to: url)
+    }
+
+    /// Writes the reply file, then marks that permission wait answered so it is not shown again.
+    public static func answerPermission(
+        id: String,
+        requestID: String,
+        action: String,
+        kind: String,
+        replyURL: URL,
+        tasksURL: URL,
+        now: Double = Date().timeIntervalSince1970
+    ) throws {
+        try writeChoice(id: id, requestID: requestID, action: action, kind: kind, to: replyURL)
+        if PermissionCopy.answersPermission(kind: kind, action: action) {
+            HookEvents.acknowledge(id: id, requestID: requestID, tasksURL: tasksURL, now: now)
+        }
+    }
+
+    /// Writes the bubble reply. Permission actions stay allow or deny. Other choices store the option id.
+    /// Opening an agent window is a separate path.
+    public static func writeChoice(id: String, requestID: String, action: String, kind: String, to url: URL) throws {
+        let trimmed = action.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedKind = kind.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = trimmed.lowercased()
+        let permission = normalizedKind == "permission" || (normalizedKind.isEmpty && (lower == "allow" || lower == "deny"))
+        let storedAction: String
+        if permission {
+            storedAction = lower
+            guard storedAction == "allow" || storedAction == "deny" else {
+                throw ReplyError.unsupported
+            }
+        } else {
+            guard !trimmed.isEmpty else { throw ReplyError.unsupported }
+            storedAction = trimmed
         }
         let payload: [String: Any] = [
             "id": id,
             "request_id": requestID,
-            "action": allowed,
-            "kind": "permission"
+            "action": storedAction,
+            "option_id": storedAction,
+            "kind": permission ? "permission" : normalizedKind
         ]
         try AtomicFile.writeJSON(payload, to: url)
+    }
+
+    /// Allow and Deny close the dialogue once the reply file has been written.
+    public static func closesBubble(kind: String, optionID: String) -> Bool {
+        if kind.trimmingCharacters(in: .whitespacesAndNewlines) == "permission" { return true }
+        switch optionID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "allow", "deny": return true
+        default: return false
+        }
     }
 
     public enum ReplyError: Error {
