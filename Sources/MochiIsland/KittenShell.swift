@@ -548,7 +548,7 @@ final class KittenShell: NSObject {
         let rowsChanged = signature != rowSignature
         rowSignature = signature
         if !dragging { layout(animated: rowsChanged && positioned) }
-        if bubble.visible { repositionBubble() }
+        retainOpenBubble()
     }
 
     func layoutInHost() {
@@ -846,19 +846,34 @@ final class KittenShell: NSObject {
         let task = taskFields(id: focusID, fallback: row)
         bubble.model.kind = kind
         let focusStatus = string(taskCache[focusID]?["status"])
+        let liveStatus = focusStatus.isEmpty ? row.status : focusStatus
         let agent = SlotFace.displayName(for: row.source)
         let prompt = string(taskCache[focusID]?["prompt"]).trimmingCharacters(in: .whitespacesAndNewlines)
         var subject = row.title.trimmingCharacters(in: .whitespacesAndNewlines)
         if subject == "New chat" || (!prompt.isEmpty && subject == prompt) {
             subject = ""
         }
-        bubble.model.title = subject.isEmpty ? agent : subject
+        let optionIDs = task.options.map(\.id)
+        let rawDetail = string(taskCache[focusID]?["detail"])
+        bubble.model.title = PermissionCopy.visibleTitle(
+            kind: task.kind,
+            status: liveStatus,
+            title: subject,
+            detail: rawDetail,
+            agent: agent,
+            optionIDs: optionIDs
+        )
         bubble.model.appName = agent
         bubble.model.updated = number(taskCache[focusID]?["updated"])
         bubble.model.source = row.source
         bubble.model.icon = row.icon
-        bubble.model.status = statusLine(focusStatus.isEmpty ? row.status : focusStatus)
-        bubble.model.summary = task.summary
+        bubble.model.status = statusLine(liveStatus)
+        bubble.model.summary = PermissionCopy.visibleDetail(
+            kind: task.kind,
+            status: liveStatus,
+            detail: task.summary,
+            optionIDs: optionIDs
+        )
         bubble.model.options = task.options
         bubble.model.taskID = focusID
         bubble.model.requestID = task.requestID
@@ -890,6 +905,45 @@ final class KittenShell: NSObject {
                 }
             }
         }
+    }
+
+    /// Allow and Deny close the card in the choice handler. A newer running chat
+    /// also drops an older permission that was left open on this agent.
+    private func retainOpenBubble() {
+        guard bubble.visible else { return }
+        let openID = bubble.model.taskID
+        let optionIDs = bubble.model.options.map(\.id)
+        let permission = PermissionCopy.isPermission(kind: bubble.model.taskKind, status: "wait", optionIDs: optionIDs)
+        if permission {
+            let live = string(taskCache[openID]?["status"])
+            let face = model.rows.first { $0.id == openID || $0.memberIDs.contains(openID) }
+            let isFace = face?.id == openID
+            if !AgentIconList.permissionStaysOpen(taskStatus: live, isFace: isFace) {
+                closeBubble(retire: false)
+                return
+            }
+            let detail = string(taskCache[openID]?["detail"])
+            let title = string(taskCache[openID]?["title"])
+            let agent = bubble.model.appName.isEmpty ? SlotFace.displayName(for: bubble.model.source) : bubble.model.appName
+            bubble.model.title = PermissionCopy.visibleTitle(
+                kind: bubble.model.taskKind,
+                status: live,
+                title: title,
+                detail: detail,
+                agent: agent,
+                optionIDs: optionIDs
+            )
+            bubble.model.summary = PermissionCopy.visibleDetail(
+                kind: bubble.model.taskKind,
+                status: live,
+                detail: detail,
+                optionIDs: optionIDs
+            )
+            if !live.isEmpty {
+                bubble.model.status = statusLine(live)
+            }
+        }
+        repositionBubble()
     }
 
     private func closeBubble(retire: Bool) {

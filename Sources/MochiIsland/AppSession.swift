@@ -20,6 +20,7 @@ final class AppSession {
         pet = petStore.load(migrating: Self.legacyFiles("src/pet_state.json"))
         prefs = prefsStore.load(migrating: Self.legacyFiles("island_offset.json"))
         let now = Date().timeIntervalSince1970
+        HookEvents.scrubStored(tasksURL: AppConfig.cursorDirectory.appendingPathComponent("mochi-island-tasks.json"))
         var active = Set(
             TaskReader.load(
                 tasksURL: AppConfig.cursorDirectory.appendingPathComponent("mochi-island-tasks.json"),
@@ -213,7 +214,14 @@ final class AppSession {
         let id = body["id"] as? String ?? ""
         let requestID = body["request_id"] as? String ?? ""
         do {
-            try ReplyWriter.writeChoice(id: id, requestID: requestID, action: action, kind: kind, to: replyURL)
+            try ReplyWriter.answerPermission(
+                id: id,
+                requestID: requestID,
+                action: action,
+                kind: kind,
+                replyURL: replyURL,
+                tasksURL: tasksURL
+            )
             return ["ok": true]
         } catch {
             return ["ok": false, "error": "Could not save the reply. Choose it in Cursor."]

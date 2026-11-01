@@ -44,6 +44,64 @@ public struct HookOutcome: Equatable {
     }
 }
 
+public enum PermissionCopy {
+    public static let actionKinds = ["Shell", "MCP", "Permission"]
+
+    public static func containsDebug(_ text: String) -> Bool {
+        text.contains("PM手点") || text.contains("请选 Allow 或 Deny")
+    }
+
+    public static func isPermission(kind: String, status: String, optionIDs: [String]) -> Bool {
+        if kind.trimmingCharacters(in: .whitespacesAndNewlines) == "permission" { return true }
+        guard status == "wait" else { return false }
+        let ids = Set(optionIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+        return ids.contains("allow") && ids.contains("deny")
+    }
+
+    /// Allow and Deny on a permission card. A mode switch uses a different kind.
+    public static func answersPermission(kind: String, action: String) -> Bool {
+        let action = action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard action == "allow" || action == "deny" else { return false }
+        let kind = kind.trimmingCharacters(in: .whitespacesAndNewlines)
+        return kind == "permission" || kind.isEmpty
+    }
+
+    /// Shell, MCP, or Permission. Prompt text is never a title.
+    public static func actionKind(detail: String, title: String = "") -> String {
+        let detail = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        if actionKinds.contains(detail) { return detail }
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if actionKinds.contains(title) { return title }
+        return "Permission"
+    }
+
+    public static func visibleTitle(
+        kind: String,
+        status: String,
+        title: String,
+        detail: String,
+        agent: String,
+        optionIDs: [String]
+    ) -> String {
+        if isPermission(kind: kind, status: status, optionIDs: optionIDs) {
+            return actionKind(detail: detail, title: title)
+        }
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed == "New chat" || containsDebug(trimmed) {
+            return agent
+        }
+        return trimmed
+    }
+
+    /// Permission cards use the buttons and a short status. The detail line stays empty.
+    public static func visibleDetail(kind: String, status: String, detail: String, optionIDs: [String]) -> String {
+        if isPermission(kind: kind, status: status, optionIDs: optionIDs) { return "" }
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || containsDebug(trimmed) { return "" }
+        return trimmed
+    }
+}
+
 public enum HookEvents {
     public static func interpret(
         sourceFlag: String?,
@@ -58,13 +116,14 @@ public enum HookEvents {
         guard !mapped.isEmpty else { return nil }
         let permission = isPermission(event, source: source)
         let waits = permission && (source == "cursor" || source == "codex")
+        let detail = safeDetail(for: event, source: source)
         let choice = choiceOptions(payload: payload, event: event)
         let options = waits ? allowDeny : choice.options
         let kind = waits ? "permission" : choice.kind
         return HookOutcome(
             id: sessionID(in: payload, source: source),
             source: source,
-            title: SlotFace.displayName(for: source),
+            title: waits ? PermissionCopy.actionKind(detail: detail) : SlotFace.displayName(for: source),
             status: mapped,
             kind: mapped == "wait" && waits ? kind : (mapped == "wait" ? "" : ""),
             requestID: waits ? requestID(in: payload) : "",
@@ -72,7 +131,7 @@ public enum HookEvents {
             options: waits ? options : [],
             waitsForPermission: waits,
             permissionStyle: waits ? (source == "codex" ? "codex" : "cursor") : "",
-            detail: safeDetail(for: event, source: source)
+            detail: detail
         )
     }
 
@@ -125,7 +184,70 @@ public enum HookEvents {
     public static func commit(_ outcome: HookOutcome, tasksURL: URL, now: Double = Date().timeIntervalSince1970) {
         var root = readRoot(tasksURL)
         var tasks = root["tasks"] as? [String: Any] ?? [:]
-        merge(outcome, into: &tasks, now: now)
+        var delivery = outcome
+        let answered = Set(stringList(root["answered"]))
+        if delivery.status == "wait", !delivery.requestID.isEmpty, answered.contains(delivery.requestID) {
+            delivery.status = "running"
+            delivery.kind = ""
+            delivery.options = []
+            delivery.waitsForPermission = false
+            delivery.requestID = ""
+            delivery.questionID = ""
+            delivery.title = SlotFace.displayName(for: delivery.source)
+            delivery.detail = ""
+        }
+        merge(delivery, into: &tasks, now: now)
+        scrub(&tasks)
+        root["tasks"] = tasks
+        try? AtomicFile.writeJSON(root, to: tasksURL)
+    }
+
+    /// Rewrites the task file without prompt text, command text, or permission debug copy.
+    public static func scrubStored(tasksURL: URL) {
+        var root = readRoot(tasksURL)
+        guard var tasks = root["tasks"] as? [String: Any] else { return }
+        let before = try? JSONSerialization.data(withJSONObject: tasks, options: [.sortedKeys])
+        scrub(&tasks)
+        let after = try? JSONSerialization.data(withJSONObject: tasks, options: [.sortedKeys])
+        guard before != after else { return }
+        root["tasks"] = tasks
+        try? AtomicFile.writeJSON(root, to: tasksURL)
+    }
+
+    /// Records Allow or Deny and leaves the wait, so the card is not shown again.
+    public static func acknowledge(id: String, requestID: String, tasksURL: URL, now: Double = Date().timeIntervalSince1970) {
+        var root = readRoot(tasksURL)
+        var tasks = root["tasks"] as? [String: Any] ?? [:]
+        var answered = stringList(root["answered"])
+        let trimmedRequest = requestID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedID = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedRequest.isEmpty, !answered.contains(trimmedRequest) {
+            answered.append(trimmedRequest)
+        }
+        if answered.count > AppConfig.fedTaskLimit {
+            answered = Array(answered.suffix(AppConfig.fedTaskLimit))
+        }
+        for key in Array(tasks.keys) {
+            guard var record = tasks[key] as? [String: Any] else { continue }
+            let recordID = string(record["id"]).isEmpty ? key : string(record["id"])
+            let recordRequest = string(record["request_id"])
+            let idMatch = !trimmedID.isEmpty && recordID == trimmedID
+            let requestMatch = !trimmedRequest.isEmpty && recordRequest == trimmedRequest
+            guard idMatch || requestMatch else { continue }
+            guard string(record["status"]) == "wait", isPermissionRecord(record) else { continue }
+            record["status"] = "running"
+            record["title"] = SlotFace.displayName(for: string(record["source"]))
+            record["updated"] = now
+            record.removeValue(forKey: "kind")
+            record.removeValue(forKey: "options")
+            record.removeValue(forKey: "detail")
+            record.removeValue(forKey: "question_id")
+            record.removeValue(forKey: "prompt")
+            record.removeValue(forKey: "command")
+            tasks[key] = record
+        }
+        scrub(&tasks)
+        root["answered"] = answered
         root["tasks"] = tasks
         try? AtomicFile.writeJSON(root, to: tasksURL)
     }
@@ -452,6 +574,55 @@ public enum HookEvents {
             if aliases.contains(id) { return (key, item) }
         }
         return (id, [:])
+    }
+
+    private static func stringList(_ value: Any?) -> [String] {
+        value as? [String] ?? []
+    }
+
+    private static func isPermissionRecord(_ record: [String: Any]) -> Bool {
+        let options = stringOptions(record["options"])
+        return PermissionCopy.isPermission(
+            kind: string(record["kind"]),
+            status: string(record["status"]),
+            optionIDs: options.map { $0["id"] ?? "" }
+        )
+    }
+
+    /// Drops prompt and command text from every stored task. A permission title is only its action kind.
+    private static func scrub(_ tasks: inout [String: Any]) {
+        for key in Array(tasks.keys) {
+            guard var record = tasks[key] as? [String: Any] else { continue }
+            let prompt = string(record["prompt"])
+            let command = string(record["command"])
+            for banned in ["prompt", "command", "tool_input", "toolInput", "message", "initialPrompt", "initial_prompt"] {
+                record.removeValue(forKey: banned)
+            }
+            let rawDetail = string(record["detail"])
+            var title = string(record["title"])
+            if !prompt.isEmpty, title == prompt { title = "" }
+            if !command.isEmpty, title == command { title = "" }
+            if PermissionCopy.containsDebug(title) { title = "" }
+            var detail = rawDetail
+            if detail == prompt || detail == command || PermissionCopy.containsDebug(detail) {
+                detail = ""
+            }
+            if isPermissionRecord(record) {
+                title = PermissionCopy.actionKind(detail: rawDetail, title: title)
+                if !PermissionCopy.actionKinds.contains(detail) {
+                    detail = ""
+                }
+            } else if title.isEmpty {
+                title = SlotFace.displayName(for: string(record["source"]))
+            }
+            record["title"] = title
+            if detail.isEmpty {
+                record.removeValue(forKey: "detail")
+            } else {
+                record["detail"] = detail
+            }
+            tasks[key] = record
+        }
     }
 
     private static func readRoot(_ url: URL) -> [String: Any] {

@@ -606,7 +606,10 @@ func AgentIconsStayOnePerSource() {
     check(rows[0].memberIDs.contains("c-old") == false)
     check(rows[1].id == "fail")
     check(rows[1].showsDot)
-    check(rows[2].id == "g-wait")
+    check(rows[2].id == "g-run")
+    check(rows[2].status == "running")
+    check(rows[2].memberIDs.contains("g-wait"))
+    check(rows[2].showsDot)
     let running = AgentIconList.rows([
         AgentIconCandidate(id: "r", source: "cursor", title: "R", status: "running", read: true, updated: 1)
     ])
@@ -632,6 +635,25 @@ func AgentIconsStayOnePerSource() {
     check(held.count == 1)
     check(held[0].id == "d2")
     check(held[0].showsDot == false)
+    let freshPermission = AgentIconList.rows([
+        AgentIconCandidate(id: "chat", source: "cursor", title: "Cursor", status: "running", read: false, updated: 5),
+        AgentIconCandidate(id: "ask", source: "cursor", title: "Shell", status: "wait", read: false, updated: 9)
+    ])
+    check(freshPermission.count == 1)
+    check(freshPermission[0].id == "ask")
+    check(freshPermission[0].source == "cursor")
+    check(AgentIconList.permissionStaysOpen(taskStatus: "wait", isFace: true))
+    let olderWait = AgentIconList.rows([
+        AgentIconCandidate(id: "old-wait", source: "cursor", title: "合并到一个文件", status: "wait", read: false, updated: 1),
+        AgentIconCandidate(id: "new-chat", source: "cursor", title: "Cursor", status: "running", read: false, updated: 20)
+    ])
+    check(olderWait.count == 1)
+    check(olderWait[0].id == "new-chat")
+    check(olderWait[0].source == "cursor")
+    check(olderWait[0].status == "running")
+    check(olderWait[0].memberIDs.contains("old-wait"))
+    check(AgentIconList.permissionStaysOpen(taskStatus: "wait", isFace: false) == false)
+    check(AgentIconList.permissionStaysOpen(taskStatus: "running", isFace: true) == false)
 }
 
 func DockPrefDefaultsToRight() {
@@ -934,6 +956,8 @@ func SubmittedChatKeepsTheAgentAndDropsThePrompt() throws {
     check(permission?.permissionStyle == "cursor")
     check(permission?.options.map(\.self["id"]) == ["allow", "deny"])
     check(permission?.detail == "Shell")
+    check(permission?.title == "Shell")
+    check(permission?.title.contains(secret) == false)
     let shellURL = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-hook-\(UUID().uuidString).json")
     HookEvents.commit(permission!, tasksURL: shellURL, now: 21)
     let shellText = String(data: try Data(contentsOf: shellURL), encoding: .utf8) ?? ""
@@ -942,6 +966,7 @@ func SubmittedChatKeepsTheAgentAndDropsThePrompt() throws {
     let shellTasks = shellRoot?["tasks"] as? [String: Any]
     let shellRecord = shellTasks?["11111111-2222-3333-4444-555555555555"] as? [String: Any]
     check(shellRecord?["detail"] as? String == "Shell")
+    check(shellRecord?["title"] as? String == "Shell")
     check(shellRecord?["command"] == nil)
     check(shellRecord?["prompt"] == nil)
     let claude = HookEvents.interpret(sourceFlag: "claude", payload: [
@@ -969,6 +994,119 @@ func SubmittedChatKeepsTheAgentAndDropsThePrompt() throws {
     let decision = (stdout["hookSpecificOutput"] as? [String: Any])?["decision"] as? [String: Any]
     check(decision?["behavior"] as? String == "deny")
     check(HookEvents.permissionStdout(style: "cursor", action: "allow")["permission"] as? String == "allow")
+}
+
+func AnsweredPermissionIsNotShownAgain() throws {
+    let secret = "合并到一个文件"
+    let debug = "PM手点：请选 Allow 或 Deny"
+    let command = "SECRET-COMMAND"
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-permission-\(UUID().uuidString).json")
+    let legacy: [String: Any] = [
+        "tasks": [
+            "old": [
+                "id": "old",
+                "title": secret,
+                "prompt": secret,
+                "command": command,
+                "detail": debug,
+                "status": "wait",
+                "kind": "permission",
+                "source": "cursor",
+                "request_id": "req-old",
+                "updated": 10,
+                "options": [
+                    ["id": "allow", "label": "Allow"],
+                    ["id": "deny", "label": "Deny"]
+                ]
+            ]
+        ]
+    ]
+    try JSONSerialization.data(withJSONObject: legacy).write(to: url)
+    let shown = TaskReader.load(tasksURL: url, now: 20)
+    check(shown.count == 1)
+    check(shown[0].title == "Permission")
+    check(shown[0].detail == "")
+    check(shown[0].prompt == "")
+    check(shown[0].status == "wait")
+    check(shown[0].kind == "permission")
+    check(shown[0].options.map { $0["id"] ?? "" } == ["allow", "deny"])
+    check(PermissionCopy.visibleDetail(kind: "permission", status: "wait", detail: debug, optionIDs: ["allow", "deny"]) == "")
+    check(PermissionCopy.visibleDetail(kind: "permission", status: "wait", detail: "Shell", optionIDs: ["allow", "deny"]) == "")
+    check(PermissionCopy.visibleTitle(kind: "permission", status: "wait", title: secret, detail: "Shell", agent: "Cursor", optionIDs: ["allow", "deny"]) == "Shell")
+    check(PermissionCopy.visibleTitle(kind: "permission", status: "wait", title: secret, detail: debug, agent: "Cursor", optionIDs: ["allow", "deny"]) == "Permission")
+    check(PermissionCopy.containsDebug(debug))
+    HookEvents.scrubStored(tasksURL: url)
+    let scrubbed = String(data: try Data(contentsOf: url), encoding: .utf8) ?? ""
+    check(scrubbed.contains(secret) == false)
+    check(scrubbed.contains(debug) == false)
+    check(scrubbed.contains(command) == false)
+    check(scrubbed.contains("\"prompt\"") == false)
+    let chat = HookEvents.interpret(sourceFlag: nil, payload: [
+        "hook_event_name": "beforeSubmitPrompt",
+        "conversation_id": "new-chat",
+        "prompt": "1"
+    ])
+    check(chat?.status == "running")
+    check(chat?.title == "Cursor")
+    HookEvents.commit(chat!, tasksURL: url, now: 25)
+    let cleaned = String(data: try Data(contentsOf: url), encoding: .utf8) ?? ""
+    check(cleaned.contains(secret) == false)
+    check(cleaned.contains(debug) == false)
+    check(cleaned.contains("PM手点") == false)
+    check(cleaned.contains("请选 Allow 或 Deny") == false)
+    check(cleaned.contains(command) == false)
+    check(cleaned.contains("\"prompt\"") == false)
+    let root = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+    let tasks = root?["tasks"] as? [String: Any]
+    let old = tasks?["old"] as? [String: Any]
+    let started = tasks?["new-chat"] as? [String: Any]
+    check(old?["status"] as? String == "wait")
+    check(old?["title"] as? String == "Permission")
+    check(old?["prompt"] == nil)
+    check(old?["detail"] == nil)
+    check(started?["status"] as? String == "running")
+    check(started?["title"] as? String == "Cursor")
+    check(started?["detail"] as? String == "Chat")
+    check(started?["prompt"] == nil)
+    let replyURL = FileManager.default.temporaryDirectory.appendingPathComponent("mochi-reply-\(UUID().uuidString).json")
+    try ReplyWriter.answerPermission(
+        id: "old",
+        requestID: "req-old",
+        action: "Allow",
+        kind: "permission",
+        replyURL: replyURL,
+        tasksURL: url,
+        now: 30
+    )
+    let reply = try JSONSerialization.jsonObject(with: Data(contentsOf: replyURL)) as? [String: Any]
+    check(reply?["action"] as? String == "allow")
+    check(reply?["kind"] as? String == "permission")
+    check(reply?["request_id"] as? String == "req-old")
+    let settled = TaskReader.load(tasksURL: url, now: 40)
+    let settledOld = settled.first { $0.id == "old" }
+    check(settledOld?.status == "running")
+    check(settledOld?.options.isEmpty == true)
+    check(settledOld?.kind == "")
+    check(settledOld?.prompt == "")
+    let again = HookEvents.interpret(sourceFlag: nil, payload: [
+        "hook_event_name": "beforeShellExecution",
+        "conversation_id": "old",
+        "generation_id": "req-old",
+        "command": command
+    ])
+    check(again?.requestID == "req-old")
+    HookEvents.commit(again!, tasksURL: url, now: 41)
+    let hidden = TaskReader.load(tasksURL: url, now: 50)
+    let hiddenOld = hidden.first { $0.id == "old" }
+    check(hiddenOld?.status == "running")
+    check(hiddenOld?.options.isEmpty == true)
+    check(hiddenOld?.kind == "")
+    let stored = String(data: try Data(contentsOf: url), encoding: .utf8) ?? ""
+    check(stored.contains(secret) == false)
+    check(stored.contains(command) == false)
+    check(stored.contains("PM手点") == false)
+    check(PermissionCopy.answersPermission(kind: "mode", action: "deny") == false)
+    check(ReplyWriter.closesBubble(kind: "permission", optionID: "deny"))
 }
 
 func CodexAndClaudeHooksInstallMarkedCommands() throws {
@@ -1629,6 +1767,7 @@ KittenV1FaceFilesFollowSource()
 SelectingKeepsOnlyKnownIds()
 NewWaitSelectsOnlyAfterTheFirstSnapshot()
 try SubmittedChatKeepsTheAgentAndDropsThePrompt()
+try AnsweredPermissionIsNotShownAgain()
 try CodexAndClaudeHooksInstallMarkedCommands()
 try HookRetargetPointsAtTheOpenApp()
 try PassiveHooksReportTheShortlist()

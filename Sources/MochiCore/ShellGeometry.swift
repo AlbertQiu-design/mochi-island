@@ -264,7 +264,8 @@ public enum AgentIconList {
 
     /// One row per agent. Running and waiting stay. A finished row stays until it has been opened
     /// and the bubble has closed. `holding` keeps the open finished row on screen through that close.
-    /// Prefer a waiting task, then a running one, then the newest unread finish.
+    /// A waiting task is the face only when it is at least as new as the newest running chat.
+    /// An older unanswered wait does not cover the chat that just started.
     public static func rows(_ items: [AgentIconCandidate], holding: Set<String> = []) -> [AgentIconRow] {
         var grouped: [String: [AgentIconCandidate]] = [:]
         for item in items {
@@ -292,14 +293,17 @@ public enum AgentIconList {
         }
         return keys.compactMap { source in
             guard let group = grouped[source], !group.isEmpty else { return nil }
-            let ranked = group.sorted { a, b in
+            let newestRunning = newest(group.filter { $0.status == "running" })
+            let runningStamp = newestRunning?.updated ?? -1
+            let freshWaits = group.filter { $0.status == "wait" && $0.updated >= runningStamp }
+            let best = newest(freshWaits) ?? newestRunning ?? group.sorted { a, b in
                 let ra = rank(a.status)
                 let rb = rank(b.status)
                 if ra != rb { return ra < rb }
                 if a.updated != b.updated { return a.updated > b.updated }
                 return a.id > b.id
-            }
-            guard let best = ranked.first else { return nil }
+            }.first
+            guard let best else { return nil }
             let dot = group.contains { !$0.read && ($0.status == "wait" || $0.status == "done" || $0.status == "fail") }
             return AgentIconRow(
                 id: best.id,
@@ -310,6 +314,18 @@ public enum AgentIconList {
                 showsDot: dot,
                 memberIDs: group.map(\.id)
             )
+        }
+    }
+
+    /// The open permission card stays only while that wait is still the agent's face.
+    public static func permissionStaysOpen(taskStatus: String, isFace: Bool) -> Bool {
+        taskStatus == "wait" && isFace
+    }
+
+    private static func newest(_ items: [AgentIconCandidate]) -> AgentIconCandidate? {
+        items.max { lhs, rhs in
+            if lhs.updated != rhs.updated { return lhs.updated < rhs.updated }
+            return lhs.id < rhs.id
         }
     }
 
