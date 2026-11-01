@@ -39,6 +39,11 @@ APP="$ROOT/island/MochiIsland.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Web/pets" "$APP/Contents/Resources/Web/status"
 cp "$BIN/MochiIsland" "$BIN/MochiHookCLI" "$APP/Contents/MacOS/"
 cp "$ROOT/island/Info.plist" "$APP/Contents/Info.plist"
+BUILD_ID="$(git rev-parse --short HEAD)"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0" "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_ID" "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0" "$ROOT/island/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_ID" "$ROOT/island/Info.plist"
 if [[ -f "$ROOT/island/AppIcon.icns" ]]; then
   cp "$ROOT/island/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 fi
@@ -47,4 +52,4 @@ cp "$ROOT/web/pets/"* "$APP/Contents/Resources/Web/pets/"
 cp "$ROOT/web/status/"*.gif "$APP/Contents/Resources/Web/status/"
 chmod +x "$APP/Contents/MacOS/MochiIsland" "$APP/Contents/MacOS/MochiHookCLI"
 codesign --force --deep --sign - "$APP" >/dev/null
-echo "Built $APP"
+echo "Built $APP ($BUILD_ID)"
